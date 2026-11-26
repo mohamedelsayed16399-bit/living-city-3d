@@ -1592,6 +1592,50 @@ function updateFelucca(dtReal) {
   felucca.rotation.z = Math.sin(perfT * 1.1) * 0.04;
 }
 
+// R26: paper kites flying over the river and parks (Egyptian balcony pastime)
+const kites = [];
+function initKites() {
+  const tailMat = new THREE.MeshLambertMaterial({ color: 0xf0ede4 });
+  const KITE_COLORS = [0xe84545, 0x2f9de8, 0xf2c020, 0x8a4fd8];
+  const spots = [
+    { x: RIVER_X, z: -40, y: 23 },
+    { x: RIVER_X, z: 30, y: 26 }
+  ];
+  let pi = 0;
+  for (const [k, r] of state.plots) {
+    if (r.type !== 'park' || pi >= 2) continue;
+    const p = plotPos(k); spots.push({ x: p.x, z: p.z, y: 21 + pi * 3 }); pi++;
+  }
+  for (let i = 0; i < spots.length; i++) {
+    const grp = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshLambertMaterial({ color: KITE_COLORS[i % KITE_COLORS.length], side: THREE.DoubleSide }));
+    body.rotation.x = -0.85; body.rotation.z = Math.PI / 4; // diamond tilted toward the sky
+    grp.add(body);
+    const tail = [];
+    for (let tt = 0; tt < 5; tt++) {
+      const b = new THREE.BoxGeometry(0.22, 0.14, 0.06);
+      b.translate(0, -0.55 - tt * 0.3, -0.25 - tt * 0.12);
+      tail.push(b);
+    }
+    const tailMesh = new THREE.Mesh(mergeGeos(tail), tailMat);
+    tailMesh.rotation.x = -0.85;
+    grp.add(tailMesh);
+    grp.position.set(spots[i].x, spots[i].y, spots[i].z);
+    scene.add(grp);
+    kites.push({ mesh: grp, cx: spots[i].x, cz: spots[i].z, baseY: spots[i].y, phase: i * 2.1 });
+  }
+}
+function updateKites(t) {
+  for (const k of kites) {
+    k.mesh.position.set(
+      k.cx + Math.sin(t * 0.3 + k.phase) * 4,
+      k.baseY + Math.sin(t * 0.55 + k.phase * 2) * 1.6,
+      k.cz + Math.cos(t * 0.22 + k.phase) * 4
+    );
+    k.mesh.rotation.z = Math.sin(t * 0.8 + k.phase) * 0.3;
+    k.mesh.rotation.y = Math.sin(t * 0.3 + k.phase) * 0.5;
+  }
+}
 // ============================== Balconies (single InstancedMesh, rebuilt on change) ==============================
 let balconyMesh = null;
 const balconyGeo = (() => {
@@ -2248,6 +2292,7 @@ buildStalls();
 seedCity();
 updateDayTxt();
 initPalms();
+initKites();
 buildClockTower();
 buildBalconyInstances();
 buildClotheslineInstances();
@@ -2384,6 +2429,7 @@ function animate() {
   updateFountains(dtReal);
   updateFelucca(dtReal);
   updateClothSway(perfT);
+  updateKites(perfT);
 
   if (state.speed > 0) {
     state.hour += dtGameHours;
