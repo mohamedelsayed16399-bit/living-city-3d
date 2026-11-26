@@ -4635,6 +4635,139 @@ function updateTram(dtReal) {
 }
 initTram();
 
+// R61: Nakheel district (حي النخيل) — new residential block on the east edge with a central park, fountain and kids playing
+let nakheel = null;
+function initNakheel() {
+  if (nakheel) return;
+  const NX = 128, NZ = 0;
+  const grp = new THREE.Group();
+  // sandy base + central park
+  const base = new THREE.Mesh(new THREE.BoxGeometry(17, 0.2, 66), new THREE.MeshLambertMaterial({ color: 0xd9c69c }));
+  base.position.set(NX, 0.1, NZ);
+  const park = new THREE.Mesh(new THREE.CylinderGeometry(6.4, 6.4, 0.26, 20), new THREE.MeshLambertMaterial({ color: 0x5d9c4e }));
+  park.position.set(NX, 0.22, NZ);
+  grp.add(base, park);
+  // fountain in the park
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.6, 14), new THREE.MeshLambertMaterial({ color: 0x9a9284 }));
+  basin.position.set(NX, 0.5, NZ);
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.45, 0.12, 14), new THREE.MeshLambertMaterial({ color: 0x6db3f2 }));
+  water.position.set(NX, 0.82, NZ);
+  grp.add(basin, water);
+  const jets = [];
+  for (let i = 0; i < 3; i++) {
+    const j = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.4, 6), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.85 }));
+    j.position.set(NX - 0.6 + i * 0.6, 1.5, NZ);
+    grp.add(j); jets.push(j);
+  }
+  // benches around the park
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 0.5), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    b.position.set(NX + Math.cos(a) * 5.2, 0.45, NZ + Math.sin(a) * 5.2);
+    b.rotation.y = -a + Math.PI / 2;
+    grp.add(b);
+  }
+  // 8 mid-rise buildings around the park
+  const bCols = [0xe8dcc0, 0xd8c8a8, 0xc9d4e0, 0xe0cbb8, 0xd4e0c9, 0xe6d0c0, 0xccd8d8, 0xe0d8b8];
+  for (let i = 0; i < 6; i++) {
+    const north = i < 3;
+    const bx = NX, bz = NZ + (north ? -13 - i * 9.5 : 13 + (i - 3) * 9.5);
+    const hgt = 8 + (i % 3) * 3;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(9, hgt, 7), new THREE.MeshLambertMaterial({ color: bCols[i] }));
+    b.position.set(bx, hgt / 2, bz);
+    grp.add(b);
+    // simple window grid
+    const winM = new THREE.MeshLambertMaterial({ color: 0x27384f });
+    for (let wy = 1.6; wy < hgt - 1; wy += 2.2) {
+      for (let wx = -3; wx <= 3; wx += 2) {
+        const w = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.2), winM);
+        w.position.set(bx + wx, wy, bz + (north ? 3.51 : -3.51));
+        if (!north) w.rotation.y = Math.PI;
+        grp.add(w);
+      }
+    }
+  }
+  // entrance arch sign on road x=117 facing the city
+  const postM = new THREE.MeshLambertMaterial({ color: 0x8a6b42 });
+  for (const pz of [-3.4, 3.4]) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 5.4, 8), postM);
+    p.position.set(118.5, 2.7, NZ + pz);
+    grp.add(p);
+  }
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 7.6), postM);
+  beam.position.set(118.5, 5.6, NZ);
+  grp.add(beam);
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 56;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#2e5d3a'; g.fillRect(0, 0, 256, 56);
+  g.fillStyle = '#f0e8c8'; g.font = 'bold 34px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('حي النخيل 🌴', 128, 30);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 1.4), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(118.4, 4.6, NZ);
+  sign.rotation.y = -Math.PI / 2;
+  grp.add(sign);
+  // palms inside the park
+  for (const [px, pz] of [[-4, -4], [4, -4], [-4, 4], [4, 4]]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 3.2, 6), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+    trunk.position.set(NX + px, 1.8, NZ + pz);
+    grp.add(trunk);
+    for (let f = 0; f < 5; f++) {
+      const a = f / 5 * Math.PI * 2;
+      const frond = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.75), new THREE.MeshLambertMaterial({ color: 0x3e7d3a, side: THREE.DoubleSide }));
+      frond.position.set(NX + px + Math.cos(a) * 0.85, 3.5, NZ + pz + Math.sin(a) * 0.85);
+      frond.rotation.set(-0.5, a, 0, 'YXZ');
+      grp.add(frond);
+    }
+  }
+  scene.add(grp);
+  // kids playing ball in the park (evenings)
+  const kids = [];
+  const skinCols = [0xc89b6d, 0xa8763e];
+  for (let i = 0; i < 2; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.55, 6), new THREE.MeshLambertMaterial({ color: i ? 0xe84545 : 0x2f9de8 }));
+    shirt.position.y = 0.45;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i] }));
+    head.position.y = 0.9;
+    p.add(shirt, head);
+    p.position.set(NX - 2.5 + i * 5, 0.35, NZ + 3);
+    scene.add(p);
+    kids.push(p);
+  }
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  scene.add(ball);
+  nakheel = { grp, jets, kids, ball, t: 0, toastedDay: -1 };
+}
+function updateNakheel(dtReal) {
+  if (!nakheel) return;
+  const n = nakheel;
+  n.t += dtReal;
+  // fountain jets pulse all day
+  n.jets.forEach((j, i) => {
+    const k = 0.6 + Math.abs(Math.sin(n.t * 2 + i * 1.1)) * 0.9;
+    j.scale.y = k;
+    j.position.y = 0.9 + 0.7 * k;
+  });
+  // kids + ball in the evening
+  const h = state.hour;
+  const play = h >= 16 && h < 21;
+  for (const p of n.kids) p.visible = play;
+  n.ball.visible = play;
+  if (!play) return;
+  const k = (Math.sin(n.t * 1.1) + 1) / 2;
+  n.ball.position.set(125.5 + k * 5, 0.45 + Math.abs(Math.sin(n.t * 4.4)) * 0.8, 3);
+  n.kids[0].rotation.y = Math.PI / 2;
+  n.kids[1].rotation.y = -Math.PI / 2;
+  n.kids[0].position.y = 0.35 + (k < 0.15 ? Math.abs(Math.sin(n.t * 6)) * 0.15 : 0);
+  n.kids[1].position.y = 0.35 + (k > 0.85 ? Math.abs(Math.sin(n.t * 6)) * 0.15 : 0);
+  if (n.toastedDay !== state.day) {
+    n.toastedDay = state.day;
+    toast('⛲ نافورة حي النخيل شغالة والولاد بتلعب!');
+  }
+}
+initNakheel();
+
+
 
 
 
@@ -4844,6 +4977,7 @@ function animate() {
   updateMicrobusStation(dtReal);
   updateIslandWedding(dtReal);
   updateTram(dtReal);
+  updateNakheel(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
