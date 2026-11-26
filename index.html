@@ -472,6 +472,7 @@ const BUILD_TYPES = {
   hospital: { hMin: 9, hMax: 13, floors: 4, pop: 0, jobs: 18, label: 'مستشفى', happy: 8 },
   school:   { hMin: 5, hMax: 7,  floors: 2, pop: 0, jobs: 6,  label: 'مدرسة', happy: 5 },
   mosque:   { hMin: 6, hMax: 8,  floors: 2, pop: 0, jobs: 2,  label: 'مسجد', happy: 7 },
+  construction: { hMin: 0, hMax: 0, floors: 0, pop: 0, jobs: 0, label: 'موقع بناء' },
 };
 
 // ============================== Plots & buildings ==============================
@@ -1708,6 +1709,106 @@ function updateMetro(dtReal) {
   metroTrain.children.forEach((car, i) => { car.position.z = m.dir > 0 ? i * -8.0 : i * 8.0; });
 }
 
+// R37: construction site — a tower crane builds a new high-rise, one floor per game day,
+//      then hands the plot over to a finished office tower
+let constr = null;
+let savedConstrFloors = 0;
+const CONSTR_MAX = 10;
+function makeConstructionMesh(x, z, floors) {
+  const g = new THREE.Group();
+  const conc = new THREE.MeshLambertMaterial({ color: 0xb8b4ac });
+  const conc2 = new THREE.MeshLambertMaterial({ color: 0x8f8b83 });
+  const rust = new THREE.MeshLambertMaterial({ color: 0x7a4a2b });
+  const yellow = new THREE.MeshLambertMaterial({ color: 0xf2b705 });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x333a40 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.4, 8.8), conc2);
+  base.position.y = 0.2; g.add(base);
+  for (let f = 1; f <= floors; f++) {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.35, 7.4), conc);
+    slab.position.y = f * 3; g.add(slab);
+    for (const [cx, cz] of [[-3.2, -3.2], [3.2, -3.2], [-3.2, 3.2], [3.2, 3.2]]) {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 0.5), conc2);
+      col.position.set(cx, f * 3 - 1.55, cz); g.add(col);
+    }
+  }
+  const topY = floors * 3;
+  for (const [cx, cz] of [[-3.2, -3.2], [3.2, -3.2], [-3.2, 3.2], [3.2, 3.2]]) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 4), rust);
+    bar.position.set(cx, topY + 0.75, cz); g.add(bar);
+  }
+  const fenceMat = new THREE.MeshLambertMaterial({ color: 0xe8641c });
+  for (const [fx, fz, w, d] of [[0, -4.9, 10, 0.12], [0, 4.9, 10, 0.12], [-4.9, 0, 0.12, 10], [4.9, 0, 0.12, 10]]) {
+    const f1 = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), fenceMat);
+    f1.position.set(fx, 0.55, fz); g.add(f1);
+  }
+  const crane = new THREE.Group();
+  crane.position.set(5.6, 0, 5.6);
+  const mastH = topY + 10;
+  const cbase = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1, 1.8), dark);
+  cbase.position.y = 0.5; crane.add(cbase);
+  const mast = new THREE.Mesh(new THREE.BoxGeometry(0.7, mastH, 0.7), yellow);
+  mast.position.y = 1 + mastH / 2; crane.add(mast);
+  const top = new THREE.Group(); top.position.y = 1 + mastH;
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1, 1.1), yellow); top.add(cab);
+  const jib = new THREE.Mesh(new THREE.BoxGeometry(11, 0.3, 0.3), yellow); jib.position.x = 4.6; top.add(jib);
+  const cjib = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, 0.3), yellow); cjib.position.x = -2.6; top.add(cjib);
+  const weight = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 0.9), dark); weight.position.set(-4.2, -0.7, 0); top.add(weight);
+  const cableLen = Math.max(2, mastH + 1 - (topY + 3.2));
+  const cable = new THREE.Mesh(new THREE.BoxGeometry(0.05, cableLen, 0.05), dark);
+  cable.position.set(9.6, -cableLen / 2, 0); top.add(cable);
+  const hook = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), rust);
+  hook.position.set(9.6, -cableLen, 0); top.add(hook);
+  crane.add(top);
+  g.add(crane);
+  g.position.set(x, 0, z);
+  g.userData.type = 'construction';
+  g.userData.h = topY;
+  g.userData.craneTop = top;
+  return g;
+}
+function initConstruction() {
+  if (constr) return;
+  const ci = Math.floor(CFG.blocks / 2), cj = Math.floor(CFG.blocks / 2);
+  let best = null, bd = 1e9;
+  for (const key of plotKeys()) {
+    if (state.plots.has(key)) continue;
+    const [bi, bj] = key.split(',').map(Number);
+    if (bi === ci && bj === cj) continue;              // keep the clock-tower block clear
+    if (bi === RIVER_K - 1 || bi === RIVER_K) continue; // keep the river promenade clear
+    const { x, z } = plotPos(key);
+    const d = Math.hypot(x, z);
+    if (d < bd) { bd = d; best = key; }
+  }
+  if (!best) return;
+  const { x, z } = plotPos(best);
+  constr = { key: best, floors: savedConstrFloors > 0 ? savedConstrFloors : 2, day: state.day, mesh: makeConstructionMesh(x, z, savedConstrFloors > 0 ? savedConstrFloors : 2) };
+  buildGroup.add(constr.mesh);
+  state.plots.set(best, { type: 'construction', mesh: constr.mesh, pop: 0, jobs: 0 });
+}
+function updateConstruction(dtReal) {
+  if (!constr) return;
+  if (!state.plots.has(constr.key)) { constr = null; return; } // user demolished it
+  const craneTop = constr.mesh.userData.craneTop;
+  if (craneTop) craneTop.rotation.y += dtReal * 0.3;
+  if (state.day <= constr.day) return;
+  constr.day = state.day;
+  if (constr.floors < CONSTR_MAX) {
+    constr.floors++;
+    const p = constr.mesh.position;
+    buildGroup.remove(constr.mesh);
+    constr.mesh = makeConstructionMesh(p.x, p.z, constr.floors);
+    buildGroup.add(constr.mesh);
+    state.plots.get(constr.key).mesh = constr.mesh;
+    toast(`🏗️ البرج الجديد بقى ${constr.floors} دور!`);
+  } else {
+    const key = constr.key;
+    constr = null;
+    removeBuilding(key);
+    placeBuilding('office', key);
+    toast('🎉 خلص بناء البرج الجديد!');
+  }
+}
+
 // ============================== Sky / day-night ==============================
 const SKY = {
   night:  { sky: new THREE.Color(0x0a1024), fog: new THREE.Color(0x0a1024), hemi: 0.12, sun: 0.0,  sunC: 0x223 },
@@ -2518,6 +2619,7 @@ function saveGame() {
   const data = {
     money: state.money, day: state.day, hour: state.hour,
     weather: state.weather,
+    constrFloors: constr ? constr.floors : 0,
     plots: [...state.plots.entries()].map(([k, r]) => [k, r.type]),
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) {}
@@ -2529,7 +2631,8 @@ function loadGame() {
     const data = JSON.parse(raw);
     state.money = data.money; state.day = data.day; state.hour = data.hour;
     setWeather(data.weather || 'sunny');
-    for (const [k, type] of data.plots) { if (type === 'tower') continue; placeBuilding(type, k, true); }
+    savedConstrFloors = data.constrFloors || 0;
+    for (const [k, type] of data.plots) { if (type === 'tower' || type === 'construction') continue; placeBuilding(type, k, true); }
     recalcStats();
     return true;
   } catch (e) { return false; }
@@ -2779,6 +2882,7 @@ function seedCity() {
 buildBusStops();
 buildStalls();
 seedCity();
+initConstruction();
 updateDayTxt();
 initPalms();
 initKites();
@@ -2924,6 +3028,7 @@ function animate() {
   updateBalloon(dtReal);
   updateFish();
   updateMetro(dtReal);
+  updateConstruction(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
