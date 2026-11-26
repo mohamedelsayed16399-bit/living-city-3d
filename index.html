@@ -1463,6 +1463,67 @@ function hideFireVisuals() {
   for (const f of flames) f.visible = false;
 }
 
+// R31: roaming street vendor carts (watermelon & corn)
+const vendorCarts = [];
+function makeVendorCart(kind) {
+  const grp = new THREE.Group();
+  const wood = new THREE.MeshLambertMaterial({ color: 0x8a6238 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 1.0), wood);
+  body.position.y = 0.62;
+  grp.add(body);
+  const wheelG = new THREE.CylinderGeometry(0.22, 0.22, 0.08, 8);
+  wheelG.rotateX(Math.PI / 2);
+  const wheelM = new THREE.MeshLambertMaterial({ color: 0x2a2a2a });
+  for (const [wx, wz] of [[-0.6, 0.5], [0.6, 0.5], [-0.6, -0.5], [0.6, -0.5]]) {
+    const w = new THREE.Mesh(wheelG, wheelM); w.position.set(wx, 0.22, wz); grp.add(w);
+  }
+  // goods pile
+  const goodsG = new THREE.SphereGeometry(0.16, 7, 6);
+  const goodsM = new THREE.MeshLambertMaterial({ color: kind === 'melon' ? 0x2e7d32 : 0xf2c020 });
+  const goods = [];
+  for (let i = 0; i < 9; i++) {
+    const b = new THREE.Vector3((i % 3) * 0.32 - 0.32, 1.0 + Math.floor(i / 6) * 0.24, Math.floor((i % 6) / 3) * 0.34 - 0.17);
+    goods.push(goodsG.clone()); goods[goods.length - 1].translate(b.x, b.y, b.z);
+  }
+  grp.add(new THREE.Mesh(mergeGeos(goods), goodsM));
+  // umbrella
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.6, 5), wheelM);
+  pole.position.set(-0.5, 1.7, 0); grp.add(pole);
+  const umb = new THREE.Mesh(new THREE.ConeGeometry(1.0, 0.45, 8), new THREE.MeshLambertMaterial({ color: kind === 'melon' ? 0xd84040 : 0xe8742a }));
+  umb.position.set(-0.5, 2.5, 0); grp.add(umb);
+  scene.add(grp);
+  return grp;
+}
+for (let i = 0; i < 2; i++) {
+  const kind = i === 0 ? 'melon' : 'corn';
+  const dir = i === 0 ? 'x' : 'z';
+  vendorCarts.push({
+    mesh: makeVendorCart(kind), kind, dir,
+    line: -HALF + pickRoadLineIdx() * CFG.pitch,
+    pos: -HALF + Math.random() * HALF * 2,
+    heading: i === 0 ? 1 : -1,
+    speed: 2.0 + i * 0.5, wait: 0
+  });
+}
+function updateVendors(dtReal) {
+  const laneOff = 2.6; // hug the sidewalk edge
+  for (const v of vendorCarts) {
+    if (v.wait > 0) { v.wait -= dtReal; }
+    else {
+      v.pos += v.heading * v.speed * dtReal;
+      const rel = v.pos + HALF;
+      const nearInt = Math.abs(rel / CFG.pitch - Math.round(rel / CFG.pitch)) * CFG.pitch;
+      if (nearInt < 1.0 && Math.random() < 0.01) v.wait = 2 + Math.random() * 4; // stop to sell
+      if (v.pos > HALF + 3) { v.pos = -HALF - 3; v.line = -HALF + pickRoadLineIdx() * CFG.pitch; }
+      if (v.pos < -HALF - 3) { v.pos = HALF + 3; v.line = -HALF + pickRoadLineIdx() * CFG.pitch; }
+    }
+    const x = v.dir === 'x' ? v.pos : v.line + laneOff * v.heading;
+    const z = v.dir === 'x' ? v.line + laneOff * v.heading : v.pos;
+    v.mesh.position.set(x, 0, z);
+    v.mesh.rotation.y = v.dir === 'x' ? (v.heading > 0 ? 0 : Math.PI) : (v.heading > 0 ? -Math.PI / 2 : Math.PI / 2);
+  }
+}
+
 // ============================== Sky / day-night ==============================
 const SKY = {
   night:  { sky: new THREE.Color(0x0a1024), fog: new THREE.Color(0x0a1024), hemi: 0.12, sun: 0.0,  sunC: 0x223 },
@@ -2673,6 +2734,7 @@ function animate() {
   updateFelucca(dtReal);
   updateCruiseBoat(dtReal);
   updateFire(dtReal);
+  updateVendors(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
