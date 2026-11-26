@@ -155,7 +155,7 @@ const CFG = {
   citizens: IS_MOBILE ? 55 : 130,
   cars: IS_MOBILE ? 14 : 32,
   shadows: !IS_MOBILE,
-  pixelRatio: Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2),
+  pixelRatio: Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.25 : 2),
   gameHoursPerRealSec: 0.25, // at 1x speed: full day = 96 seconds
 };
 const HALF = CFG.blocks * CFG.pitch / 2; // 117
@@ -560,7 +560,7 @@ function createBuildingMesh(type, x, z) {
     mesh.add(roof);
   } else if (type === 'office' && Math.random() < 0.35 && h > 14) {
     makeBillboard(mesh, w, d, h);
-  } else if (type === 'office' && Math.random() < 0.6) {
+  } else if (type === 'office' && !IS_MOBILE && Math.random() < 0.6) {
     const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 4), roofMat);
     ant.position.y = h / 2 + 2;
     mesh.add(ant);
@@ -610,13 +610,13 @@ function createBuildingMesh(type, x, z) {
   if (type === 'office' || type === 'shop') {
     const tankMat = new THREE.MeshLambertMaterial({ color: 0xf0ede4 });
     const acMat = new THREE.MeshLambertMaterial({ color: 0x9aa2ab });
-    const nTanks = 1 + (Math.random() < 0.4 ? 1 : 0);
+    const nTanks = IS_MOBILE ? 1 : 1 + (Math.random() < 0.4 ? 1 : 0);
     for (let t = 0; t < nTanks; t++) {
       const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 1.15, 8), tankMat);
       tank.position.set((Math.random() - 0.5) * (w - 2), h / 2 + 0.58, (Math.random() - 0.5) * (d - 2));
       mesh.add(tank);
     }
-    const nAC = 1 + Math.floor(Math.random() * 3);
+    const nAC = IS_MOBILE ? 1 : 1 + Math.floor(Math.random() * 3);
     for (let a = 0; a < nAC; a++) {
       const ac = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.5, 0.6), acMat);
       ac.position.set((Math.random() - 0.5) * (w - 1.6), h / 2 + 0.26, (Math.random() - 0.5) * (d - 1.6));
@@ -4667,8 +4667,9 @@ function initNakheel() {
     b.rotation.y = -a + Math.PI / 2;
     grp.add(b);
   }
-  // 8 mid-rise buildings around the park
-  const bCols = [0xe8dcc0, 0xd8c8a8, 0xc9d4e0, 0xe0cbb8, 0xd4e0c9, 0xe6d0c0, 0xccd8d8, 0xe0d8b8];
+  // 6 mid-rise buildings around the park — windows in ONE InstancedMesh (R64 perf: ~90 draw calls saved)
+  const bCols = [0xe8dcc0, 0xd8c8a8, 0xc9d4e0, 0xe0cbb8, 0xd4e0c9, 0xe6d0c0];
+  const winXf = [];
   for (let i = 0; i < 6; i++) {
     const north = i < 3;
     const bx = NX, bz = NZ + (north ? -13 - i * 9.5 : 13 + (i - 3) * 9.5);
@@ -4676,17 +4677,21 @@ function initNakheel() {
     const b = new THREE.Mesh(new THREE.BoxGeometry(9, hgt, 7), new THREE.MeshLambertMaterial({ color: bCols[i] }));
     b.position.set(bx, hgt / 2, bz);
     grp.add(b);
-    // simple window grid
-    const winM = new THREE.MeshLambertMaterial({ color: 0x27384f });
     for (let wy = 1.6; wy < hgt - 1; wy += 2.2) {
       for (let wx = -3; wx <= 3; wx += 2) {
-        const w = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.2), winM);
-        w.position.set(bx + wx, wy, bz + (north ? 3.51 : -3.51));
-        if (!north) w.rotation.y = Math.PI;
-        grp.add(w);
+        winXf.push([bx + wx, wy, bz + (north ? 3.51 : -3.51), north ? 0 : Math.PI]);
       }
     }
   }
+  const winInst = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.1, 1.2), new THREE.MeshLambertMaterial({ color: 0x27384f }), winXf.length);
+  const _m4 = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s1 = new THREE.Vector3(1, 1, 1);
+  winXf.forEach(([x, y, z, ry], i) => {
+    _e.set(0, ry, 0); _q.setFromEuler(_e); _v.set(x, y, z);
+    _m4.compose(_v, _q, _s1);
+    winInst.setMatrixAt(i, _m4);
+  });
+  winInst.instanceMatrix.needsUpdate = true;
+  grp.add(winInst);
   // entrance arch sign on road x=117 facing the city
   const postM = new THREE.MeshLambertMaterial({ color: 0x8a6b42 });
   for (const pz of [-3.4, 3.4]) {
