@@ -5291,6 +5291,121 @@ function updateFishMarket(dtReal) {
 }
 initFishMarket();
 
+// R68: baladi ahwa (قهوة الوردة) on the south-east edge — kiosk, outdoor tables, domino players in the evening
+let ahwa = null;
+function initAhwa() {
+  if (ahwa) return;
+  const AX = 103, AZ = 127.5;
+  const grp = new THREE.Group();
+  // sandy corner lot
+  const lot = new THREE.Mesh(new THREE.BoxGeometry(14, 0.2, 12), new THREE.MeshLambertMaterial({ color: 0xd9c69c }));
+  lot.position.set(AX, 0.1, AZ);
+  grp.add(lot);
+  // green wooden kiosk
+  const kiosk = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 2.6), new THREE.MeshLambertMaterial({ color: 0x2e6b3f }));
+  kiosk.position.set(AX + 4.2, 1.4, AZ - 3.8);
+  const kRoof = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.25, 3.0), new THREE.MeshLambertMaterial({ color: 0x8a4f3a }));
+  kRoof.position.set(AX + 4.2, 2.95, AZ - 3.8);
+  const kWin = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.0), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+  kWin.position.set(AX + 4.2, 1.6, AZ - 2.49);
+  grp.add(kiosk, kRoof, kWin);
+  // kettle on top + tea glasses shelf
+  const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 0.5, 8), new THREE.MeshLambertMaterial({ color: 0xb87333 }));
+  kettle.position.set(AX + 3.2, 3.3, AZ - 3.8);
+  grp.add(kettle);
+  // sign facing the street (north)
+  const cv = document.createElement('canvas'); cv.width = 224; cv.height = 48;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#5a3a1e'; g.fillRect(0, 0, 224, 48);
+  g.fillStyle = '#ffe9a8'; g.font = 'bold 30px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('قهوة الوردة ☕', 112, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.0), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(AX, 3.3, AZ - 5.9);
+  sign.rotation.y = Math.PI;
+  grp.add(sign);
+  // hanging lamps
+  const lamps = [];
+  for (const lx of [-3.5, 0, 3.5]) {
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.8, 4), new THREE.MeshLambertMaterial({ color: 0x333 }));
+    cord.position.set(AX + lx, 3.0, AZ - 0.5);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshBasicMaterial({ color: 0x6b5a3e }));
+    bulb.position.set(AX + lx, 2.55, AZ - 0.5);
+    grp.add(cord, bulb);
+    lamps.push(bulb);
+  }
+  // wire for the lamps
+  const wire = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.03, 0.03), new THREE.MeshLambertMaterial({ color: 0x222 }));
+  wire.position.set(AX, 3.4, AZ - 0.5);
+  grp.add(wire);
+  // 3 tables with chairs + domino players
+  const players = [];
+  const tileM = new THREE.MeshLambertMaterial({ color: 0xf6f2ea });
+  for (let ti = 0; ti < 3; ti++) {
+    const tx = AX - 3.5 + ti * 3.4, tz = AZ + 1.5;
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.1, 10), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    table.position.set(tx, 0.72, tz);
+    const tleg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.7, 6), new THREE.MeshLambertMaterial({ color: 0x4a3220 }));
+    tleg.position.set(tx, 0.36, tz);
+    grp.add(table, tleg);
+    // domino tiles on the table
+    for (let d = 0; d < 4; d++) {
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.3), tileM);
+      tile.position.set(tx + Math.cos(d * 1.9) * 0.35, 0.8, tz + Math.sin(d * 1.9) * 0.35);
+      tile.rotation.y = d * 0.8;
+      grp.add(tile);
+    }
+    // tea glasses
+    for (const [gx, gz] of [[0.4, 0.3], [-0.35, 0.4]]) {
+      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.05, 0.16, 8), new THREE.MeshLambertMaterial({ color: 0xc25a2a, transparent: true, opacity: 0.85 }));
+      glass.position.set(tx + gx, 0.85, tz + gz);
+      grp.add(glass);
+    }
+    // two seated players per table
+    for (let s = 0; s < 2; s++) {
+      const a = s * Math.PI + ti * 0.5;
+      const p = new THREE.Group();
+      const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.7, 6), new THREE.MeshLambertMaterial({ color: [0x6b7280, 0xe8e0cc, 0x3a5f8a, 0x7a4a3a, 0x4a6b4a, 0x8a6b42][ti * 2 + s] }));
+      shirt.position.y = 0.72;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshLambertMaterial({ color: [0xc89b6d, 0xa8763e][s] }));
+      head.position.y = 1.25;
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.4, 0.12), new THREE.MeshLambertMaterial({ color: [0xc89b6d, 0xa8763e][s] }));
+      arm.position.set(0.3, 0.95, 0);
+      arm.rotation.z = -0.6;
+      p.add(shirt, head, arm);
+      p.position.set(tx + Math.cos(a) * 1.15, 0.1, tz + Math.sin(a) * 1.15);
+      p.rotation.y = -a + Math.PI / 2;
+      p.visible = false;
+      grp.add(p);
+      players.push({ g: p, arm, ph: ti * 2.1 + s * 3.3 });
+    }
+  }
+  scene.add(grp);
+  ahwa = { grp, players, lamps, t: 0, toastedDay: -1 };
+}
+function updateAhwa(dtReal) {
+  if (!ahwa) return;
+  const a = ahwa;
+  a.t += dtReal;
+  const h = state.hour;
+  const open = h >= 16 || h < 1;
+  const lit = h >= 17 || h < 5;
+  for (const l of a.lamps) l.material.color.setHex(lit ? 0xffd98a : 0x6b5a3e);
+  if (open && a.toastedDay !== state.day) {
+    a.toastedDay = state.day;
+    toast('☕ قهوة الوردة مليانة — الدومينو على النار!');
+  }
+  for (const p of a.players) {
+    p.g.visible = open;
+    if (!open) continue;
+    // domino slam: arm lifts and drops
+    const k = Math.max(0, Math.sin(a.t * 1.3 + p.ph));
+    p.arm.rotation.z = -0.6 - (k > 0.92 ? (k - 0.92) * 6 : 0);
+    p.g.rotation.x = Math.sin(a.t * 0.9 + p.ph) * 0.03;
+  }
+}
+initAhwa();
+
+
 
 
 
@@ -5512,6 +5627,7 @@ function animate() {
   updateFunfair(dtReal);
   updateLevelCrossing(dtReal);
   updateFishMarket(dtReal);
+  updateAhwa(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
