@@ -630,6 +630,7 @@ function placeBuilding(type, key, silent) {
   if (!silent) {
     recalcStats();
     buildBalconyInstances();
+    buildClotheslineInstances();
     mesh.scale.y = 0.03;
     buildAnims.push({ mesh, t: 0, h: mesh.userData.h });
   }
@@ -647,6 +648,7 @@ function removeBuilding(key) {
   state.plots.delete(key);
   recalcStats();
   buildBalconyInstances();
+  buildClotheslineInstances();
   return true;
 }
 
@@ -1584,6 +1586,70 @@ function buildBalconyInstances() {
   scene.add(balconyMesh);
 }
 
+// R21: clotheslines with hanging laundry on house fronts (instanced + sway)
+let clothesLineMesh = null, clothMesh = null;
+const clothData = [];
+const CLOTH_COLORS = [0xd9434e, 0x3d7bd9, 0xe8c832, 0xf2f2ee, 0x42a86b, 0xd97ab8];
+const clothLineGeo = new THREE.BoxGeometry(3.2, 0.04, 0.04);
+const clothGeo = new THREE.PlaneGeometry(0.78, 0.95); clothGeo.translate(0, -0.475, 0);
+function buildClotheslineInstances() {
+  if (clothesLineMesh) { scene.remove(clothesLineMesh); clothesLineMesh.dispose && clothesLineMesh.dispose(); clothesLineMesh = null; }
+  if (clothMesh) { scene.remove(clothMesh); clothMesh.dispose && clothMesh.dispose(); clothMesh = null; }
+  clothData.length = 0;
+  const lines = [];
+  for (const [key, rec] of state.plots) {
+    if (!rec.mesh || !rec.mesh.userData || rec.mesh.userData.type !== 'house') continue;
+    const [ki, kj, kp] = key.split(',').map(Number);
+    if (((ki * 31 + kj * 17 + kp * 7) % 10) >= 5) continue; // ~50% of houses
+    const m = rec.mesh, h = m.userData.h;
+    const w = m.geometry.parameters.width, d = m.geometry.parameters.depth;
+    const rot = m.rotation.y || 0, cos = Math.cos(rot), sin = Math.sin(rot);
+    const fy = h - 0.55;
+    const ox = (d / 2 + 0.85) * sin, oz = (d / 2 + 0.85) * cos;
+    lines.push({ x: m.position.x + ox, y: fy, z: m.position.z + oz, ry: rot });
+  }
+  if (!lines.length) return;
+  clothesLineMesh = new THREE.InstancedMesh(clothLineGeo, new THREE.MeshLambertMaterial({ color: 0x444a50 }), lines.length);
+  clothMesh = new THREE.InstancedMesh(clothGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), lines.length * 3);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  const tc = new THREE.Color();
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    q.setFromAxisAngle(UP, L.ry);
+    v.set(L.x, L.y, L.z);
+    m4.compose(v, q, s);
+    clothesLineMesh.setMatrixAt(i, m4);
+    const cos = Math.cos(L.ry), sin = Math.sin(L.ry);
+    for (let cnum = 0; cnum < 3; cnum++) {
+      const idx = i * 3 + cnum;
+      const lx = (cnum - 1) * 1.0;
+      clothData.push({
+        x: L.x + lx * cos, y: L.y - 0.02, z: L.z - lx * sin,
+        ry: L.ry, phase: (i * 3 + cnum) * 1.37
+      });
+      clothMesh.setColorAt(idx, tc.setHex(CLOTH_COLORS[(i * 5 + cnum * 2) % CLOTH_COLORS.length]));
+    }
+  }
+  if (clothMesh.instanceColor) clothMesh.instanceColor.needsUpdate = true;
+  scene.add(clothesLineMesh, clothMesh);
+  updateClothSway(0);
+}
+function updateClothSway(t) {
+  if (!clothMesh) return;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qSway = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0), FWD = new THREE.Vector3(0, 0, 1);
+  for (let i = 0; i < clothData.length; i++) {
+    const cd = clothData[i];
+    q.setFromAxisAngle(UP, cd.ry);
+    qSway.setFromAxisAngle(FWD, Math.sin(t * 1.6 + cd.phase) * 0.16);
+    q.multiply(qSway);
+    v.set(cd.x, cd.y, cd.z);
+    m4.compose(v, q, s);
+    clothMesh.setMatrixAt(i, m4);
+  }
+  clothMesh.instanceMatrix.needsUpdate = true;
+}
+
 // ============================== Economy ==============================
 let dayAcc = 0;
 function updateEconomy(dtGameHours) {
@@ -2085,6 +2151,7 @@ seedCity();
 initPalms();
 buildClockTower();
 buildBalconyInstances();
+buildClotheslineInstances();
 recalcStats();
 
 // citizens init after city exists
@@ -2213,6 +2280,7 @@ function animate() {
   updateBirds(dtReal);
   updateFountains(dtReal);
   updateFelucca(dtReal);
+  updateClothSway(perfT);
 
   if (state.speed > 0) {
     state.hour += dtGameHours;
