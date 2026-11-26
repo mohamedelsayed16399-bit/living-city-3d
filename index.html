@@ -4500,6 +4500,142 @@ function updateIslandWedding(dtReal) {
 }
 initIslandWedding();
 
+// R60: corniche tram (ترام الكورنيش) — rails on the east bank, cream-blue tram shuttling between two stops
+let tram = null;
+function initTram() {
+  if (tram) return;
+  const TX = -2;
+  const grp = new THREE.Group();
+  // ballast + rails along z
+  const ballast = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 216), new THREE.MeshLambertMaterial({ color: 0x9a9284 }));
+  ballast.position.set(TX, 0.05, 0);
+  grp.add(ballast);
+  const railM = new THREE.MeshLambertMaterial({ color: 0x4a4f58 });
+  for (const dx of [-0.45, 0.45]) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 216), railM);
+    r.position.set(TX + dx, 0.14, 0);
+    grp.add(r);
+  }
+  // two stops with shelter + sign
+  const stopSigns = [];
+  for (const sz of [-100, 100]) {
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.24, 8), new THREE.MeshLambertMaterial({ color: 0xd9c69c }));
+    plat.position.set(TX + 2.6, 0.12, sz);
+    grp.add(plat);
+    const postM2 = new THREE.MeshLambertMaterial({ color: 0x6b7280 });
+    for (const pz of [-2.6, 2.6]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.3, 6), postM2);
+      p.position.set(TX + 2.6, 1.15, sz + pz);
+      grp.add(p);
+    }
+    const shed = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.14, 6.4), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+    shed.position.set(TX + 2.6, 2.35, sz);
+    grp.add(shed);
+    const cv = document.createElement('canvas'); cv.width = 224; cv.height = 48;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#b3312a'; g.fillRect(0, 0, 224, 48);
+    g.fillStyle = '#ffe9a8'; g.font = 'bold 30px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('محطة الترام 🚋', 112, 26);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.95), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+    sign.position.set(TX + 2.6, 2.9, sz);
+    grp.add(sign);
+    stopSigns.push(sign);
+  }
+  scene.add(grp);
+  // the tram: two cream cars with blue stripe + pantograph
+  const tramG = new THREE.Group();
+  const wheels = [];
+  for (let c = 0; c < 2; c++) {
+    const car = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.5, 5.2), new THREE.MeshLambertMaterial({ color: 0xf2e8c9 }));
+    body.position.y = 1.1;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.4, 5.24), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+    stripe.position.y = 1.25;
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.45, 5.24), new THREE.MeshLambertMaterial({ color: 0x27384f }));
+    glass.position.y = 1.62;
+    car.add(body, stripe, glass);
+    const wG = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 10);
+    const wM = new THREE.MeshLambertMaterial({ color: 0x1c1c20 });
+    for (const wz of [-1.7, 1.7]) for (const wx of [-0.8, 0.8]) {
+      const w = new THREE.Mesh(wG, wM);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(wx, 0.3, wz);
+      car.add(w); wheels.push(w);
+    }
+    car.position.z = c === 0 ? -2.9 : 2.9;
+    tramG.add(car);
+  }
+  const pant = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 0.08), new THREE.MeshLambertMaterial({ color: 0x4a4f58 }));
+  pant.position.set(0, 2.35, 0);
+  pant.rotation.x = 0.5;
+  tramG.add(pant);
+  const headlight = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
+  headlight.position.set(0, 1.0, -6.0);
+  tramG.add(headlight);
+  scene.add(tramG);
+  // waiting passengers at each stop
+  const riders = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let s = 0; s < 2; s++) {
+    for (let i = 0; i < 3; i++) {
+      const p = new THREE.Group();
+      const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.5, 0.45) }));
+      shirt.position.y = 0.6;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[(s + i) % 3] }));
+      head.position.y = 1.15;
+      p.add(shirt, head);
+      p.userData = { stop: s, slot: i, ph: Math.random() * 6 };
+      p.visible = false;
+      scene.add(p);
+      riders.push(p);
+    }
+  }
+  tram = { grp, tramG, wheels, riders, headlight, t: 0, toastedDay: -1 };
+}
+function updateTram(dtReal) {
+  if (!tram) return;
+  const tr = tram;
+  tr.t += dtReal;
+  const h = state.hour;
+  const active = h >= 6 && h < 23;
+  // cycle 68s: 0-28 out (-100 -> 100), 28-34 dwell, 34-62 back, 62-68 dwell
+  const P = 68, t = tr.t % P;
+  const TX = -2;
+  let z, moving = false, dwellStop = -1;
+  const ease = k => k * k * (3 - 2 * k);
+  if (t < 28) { z = -100 + 200 * ease(t / 28); moving = true; }
+  else if (t < 34) { z = 100; dwellStop = 1; }
+  else if (t < 62) { z = 100 - 200 * ease((t - 34) / 28); moving = true; }
+  else { z = -100; dwellStop = 0; }
+  tr.tramG.visible = active;
+  if (active) {
+    tr.tramG.position.set(TX, 0, z);
+    tr.tramG.rotation.y = t < 34 ? 0 : Math.PI;
+    if (moving) for (const w of tr.wheels) w.rotation.x += dtReal * 10;
+    tr.headlight.material.color.setHex(h >= 17 || h < 6 ? 0xfff2b0 : 0xd8d8d2);
+    if (dwellStop >= 0 && tr.toastedDay !== state.day) {
+      tr.toastedDay = state.day;
+      toast('🚋 ترام الكورنيش وصل المحطة!');
+    }
+  }
+  const ridersActive = active && h >= 7 && h < 22;
+  for (const p of tr.riders) {
+    p.visible = ridersActive;
+    if (!ridersActive) continue;
+    const u = p.userData;
+    const stopZ = u.stop === 0 ? -100 : 100;
+    const boarding = dwellStop === u.stop;
+    const tx = boarding ? TX + 0.9 : TX + 2.6;
+    const tz = boarding ? stopZ - 1.5 + u.slot * 1.5 : stopZ - 2.4 + u.slot * 1.6;
+    p.position.x += (tx - p.position.x) * Math.min(1, dtReal * 2.2);
+    p.position.z += (tz - p.position.z) * Math.min(1, dtReal * 2.2);
+    p.position.y = 0.35;
+    p.rotation.y = -Math.PI / 2;
+  }
+}
+initTram();
+
+
 
 
 updateDayTxt();
@@ -4707,6 +4843,7 @@ function animate() {
   updateUniversity(dtReal);
   updateMicrobusStation(dtReal);
   updateIslandWedding(dtReal);
+  updateTram(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
