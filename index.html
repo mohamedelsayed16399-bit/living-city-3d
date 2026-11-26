@@ -907,6 +907,18 @@ function newCitizen(id) {
   };
 }
 
+const parkBenches = new Map(); // park key -> bench spots (for sitting citizens)
+function trySitInPark(cz) {
+  const benches = parkBenches.get(cz.stateFromKey);
+  if (!benches) return false;
+  const b = benches[Math.floor(Math.random() * benches.length)];
+  const side = Math.random() < 0.5 ? -0.42 : 0.42;
+  cz.state = 'sit'; cz.fading = null; cz.fade = 1; cz.visible = true;
+  cz.x = b.x + Math.cos(b.ry) * side + Math.sin(b.ry) * 0.1;
+  cz.z = b.z - Math.sin(b.ry) * side + Math.cos(b.ry) * 0.1;
+  cz.heading = b.ry; cz.bob = 0;
+  return true;
+}
 function citizenStartTrip(cz, destKey, nextState) {
   cz.path = makePath(cz.stateFromKey || cz.home, destKey);
   cz.seg = 0; cz.segT = 0;
@@ -932,7 +944,7 @@ function updateCitizens(dtGameHours, dtReal) {
         if (fun.length) dest = fun[Math.floor(Math.random() * fun.length)];
       }
       citizenStartTrip(cz, dest, leisure === 'out' && dest !== cz.home ? 'out' : 'home');
-    } else if (cz.state === 'out' && h >= 20.5 && Math.random() < dtGameHours * 3) {
+    } else if ((cz.state === 'out' || cz.state === 'sit') && h >= 20.5 && Math.random() < dtGameHours * 3) {
       citizenStartTrip(cz, cz.home, 'home');
     }
     // movement
@@ -953,6 +965,8 @@ function updateCitizens(dtGameHours, dtReal) {
       if (cz.seg >= cz.path.length - 1) {
         // reached the door: shrink into the building instead of popping out
         cz.state = cz.nextState; cz.path = null; cz.fading = 'out';
+        // R22: leisure trips to a park with benches end up sitting in the sun
+        if (cz.state === 'out' && Math.random() < 0.75) trySitInPark(cz);
       }
     }
     // door fade in/out
@@ -985,9 +999,10 @@ function renderCitizens() {
   for (let i = 0; i < citizens.length; i++) {
     const cz = citizens[i];
     if (!cz.visible) { citizensMesh.setMatrixAt(i, ZERO_M); continue; }
-    const bobY = Math.abs(Math.sin(cz.bob || 0)) * 0.12;
-    const sc = CITIZEN_SCALE * Math.max(0.02, cz.fade === undefined ? 1 : cz.fade);
-    _v.set(cz.x, bobY, cz.z); _s.set(sc, sc, sc);
+    const sitting = cz.state === 'sit';
+    const bobY = sitting ? 0.34 : Math.abs(Math.sin(cz.bob || 0)) * 0.12;
+    let sc = CITIZEN_SCALE * Math.max(0.02, cz.fade === undefined ? 1 : cz.fade);
+    _v.set(cz.x, bobY, cz.z); _s.set(sc, sitting ? sc * 0.62 : sc, sc);
     _q.setFromAxisAngle(_UP, cz.heading || 0);
     _m4.compose(_v, _q, _s);
     citizensMesh.setMatrixAt(i, _m4);
@@ -1710,7 +1725,7 @@ function showInfo(hit) {
   if (hit.kind === 'citizen') {
     const cz = hit.citizen;
     document.getElementById('infoTitle').textContent = '👤 ' + cz.name;
-    const stTxt = { home: 'في البيت', walk: 'ماشي في الشارع', work: 'في الشغل', out: 'بيتفسح', waiting: 'بيستنى الباص 🚌' }[cz.state] || cz.state;
+    const stTxt = { home: 'في البيت', walk: 'ماشي في الشارع', work: 'في الشغل', out: 'بيتفسح', waiting: 'بيستنى الباص 🚌', sit: 'قاعد في الحديقة 🌳' }[cz.state] || cz.state;
     rows.innerHTML =
       row('الشغلانة', cz.job) + row('الحالة دلوقتي', stTxt) +
       row('سرعة المشي', cz.speed.toFixed(1));
@@ -2214,7 +2229,7 @@ initBenches();
 // benches along park edges (instanced)
 function initBenches() {
   const parks = [];
-  for (const [k, r] of state.plots) if (r.type === 'park') parks.push(plotPos(k));
+  for (const [k, r] of state.plots) if (r.type === 'park') parks.push({ k, ...plotPos(k) });
   if (!parks.length) return;
   const benchG = (() => {
     const seat = new THREE.BoxGeometry(1.6, 0.12, 0.5); seat.translate(0, 0.45, 0);
@@ -2228,6 +2243,10 @@ function initBenches() {
   for (const p of parks.slice(0, 12)) {
     spots.push({ x: p.x - 6.5, z: p.z + 6.5, ry: Math.PI / 4 });
     spots.push({ x: p.x + 6.5, z: p.z - 6.5, ry: Math.PI / 4 });
+    parkBenches.set(p.k, [
+      { x: p.x - 6.5, z: p.z + 6.5, ry: Math.PI / 4 },
+      { x: p.x + 6.5, z: p.z - 6.5, ry: Math.PI / 4 }
+    ]);
   }
   const inst = new THREE.InstancedMesh(benchG, benchM, spots.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
@@ -2243,7 +2262,7 @@ function initBenches() {
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
-window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding,
+window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
