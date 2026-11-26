@@ -4019,6 +4019,153 @@ function updateShishaCafe(dtReal) {
 }
 initShishaCafe();
 
+// R56: Misr train station (محطة مصر) at the north edge — train arrives morning and evening
+let trainStation = null;
+function initTrainStation() {
+  if (trainStation) return;
+  const TX = 22;                    // track center x
+  const STOP_Z = -123;              // loco front when stopped
+  const grp = new THREE.Group();
+  // rails + sleepers
+  const railG = new THREE.BoxGeometry(0.14, 0.1, 17);
+  const railM = new THREE.MeshLambertMaterial({ color: 0x5a5f66 });
+  const r1 = new THREE.Mesh(railG, railM); r1.position.set(TX - 0.7, 0.05, -129.5);
+  const r2 = new THREE.Mesh(railG, railM); r2.position.set(TX + 0.7, 0.05, -129.5);
+  grp.add(r1, r2);
+  const slpG = new THREE.BoxGeometry(2.0, 0.07, 0.35);
+  const slpM = new THREE.MeshLambertMaterial({ color: 0x4a3826 });
+  const sleepers = new THREE.InstancedMesh(slpG, slpM, 14);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(1, 1, 1);
+  for (let i = 0; i < 14; i++) {
+    V.set(TX, 0.02, -121.5 - i * 1.2); M.compose(V, Q.identity(), SC); sleepers.setMatrixAt(i, M);
+  }
+  grp.add(sleepers);
+  // platform + canopy
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(8, 1.0, 11), new THREE.MeshLambertMaterial({ color: 0xc9c2b2 }));
+  platform.position.set(28, 0.5, -128);
+  grp.add(platform);
+  const poleG = new THREE.CylinderGeometry(0.09, 0.09, 3.4, 6);
+  const poleM = new THREE.MeshLambertMaterial({ color: 0x6b543a });
+  for (const [px, pz] of [[25, -124], [31, -124], [25, -132], [31, -132]]) {
+    const p = new THREE.Mesh(poleG, poleM); p.position.set(px, 2.7, pz); grp.add(p);
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(9, 0.25, 10), new THREE.MeshLambertMaterial({ color: 0x2e6b4f }));
+  roof.position.set(28, 4.5, -128);
+  grp.add(roof);
+  // sign facing the city (+z)
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 56;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#1d3d2b'; g.fillRect(0, 0, 256, 56);
+  g.fillStyle = '#ffd75a'; g.font = 'bold 36px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('محطة مصر 🚂', 128, 30);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(28, 3.6, -123.1);
+  grp.add(sign);
+  // station clock
+  const clockF = new THREE.Mesh(new THREE.CircleGeometry(0.55, 16), new THREE.MeshBasicMaterial({ color: 0xf5f2e8 }));
+  clockF.position.set(24.6, 3.55, -123.12);
+  grp.add(clockF);
+  // station house
+  const house = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 5), new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }));
+  house.position.set(34, 1.5, -131);
+  grp.add(house);
+  scene.add(grp);
+  // the train: loco + 2 cars (built around z=0, positioned per-frame)
+  const train = new THREE.Group();
+  const loco = new THREE.Group();
+  const lBody = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 3.6), new THREE.MeshLambertMaterial({ color: 0x274d36 }));
+  lBody.position.y = 1.3;
+  const lCab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.0, 1.4), new THREE.MeshLambertMaterial({ color: 0x1d3d2b }));
+  lCab.position.set(0, 2.6, -0.9);
+  const lChim = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.9, 8), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+  lChim.position.set(0, 2.6, 1.1);
+  const lCow = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.6, 0.5), new THREE.MeshLambertMaterial({ color: 0xa32b2b }));
+  lCow.position.set(0, 0.5, 1.95);
+  loco.add(lBody, lCab, lChim, lCow);
+  loco.position.z = 0;
+  train.add(loco);
+  const carM1 = new THREE.MeshLambertMaterial({ color: 0xe8dfc8 });
+  const carM2 = new THREE.MeshLambertMaterial({ color: 0x3a7a55 });
+  for (let c = 0; c < 2; c++) {
+    const car = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.5, 3.2), carM1);
+    body.position.y = 1.15;
+    const band = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.4, 3.22), carM2);
+    band.position.y = 1.5;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 3.0), new THREE.MeshLambertMaterial({ color: 0x999999 }));
+    top.position.y = 2.0;
+    car.add(body, band, top);
+    car.position.z = -3.8 - c * 3.5;
+    train.add(car);
+  }
+  train.position.set(TX, 0.1, -200);
+  scene.add(train);
+  // chimney smoke while moving
+  const PUFFS = 5;
+  const smoke = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 6, 5), new THREE.MeshLambertMaterial({ color: 0xdddddd, transparent: true, opacity: 0.5 }), PUFFS);
+  smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  smoke.visible = false;
+  scene.add(smoke);
+  // waiting passengers
+  const passengers = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 8; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.5, 0.5) }));
+    shirt.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i % 3] }));
+    head.position.y = 1.15;
+    p.add(shirt, head);
+    p.position.set(25.5 + (i % 4) * 1.6, 1.0, -125.5 - Math.floor(i / 4) * 4);
+    p.userData = { ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    passengers.push(p);
+  }
+  trainStation = { train, smoke, passengers, t: 0, stopZ: STOP_Z, tx: TX, toastedDay: -1, toastedEve: -1 };
+}
+function updateTrainStation(dtReal) {
+  if (!trainStation) return;
+  trainStation.t += dtReal;
+  const h = state.hour;
+  // schedule: morning 7-10, evening 17-20
+  let phase = 'away', prog = 0;
+  if (h >= 7 && h < 8) { phase = 'moving'; prog = h - 7; }
+  else if (h >= 8 && h < 9) { phase = 'stopped'; prog = 1; }
+  else if (h >= 9 && h < 10) { phase = 'moving'; prog = 1 - (h - 9); }
+  else if (h >= 17 && h < 18) { phase = 'moving'; prog = h - 17; }
+  else if (h >= 18 && h < 19) { phase = 'stopped'; prog = 1; }
+  else if (h >= 19 && h < 20) { phase = 'moving'; prog = 1 - (h - 19); }
+  const ease = prog * prog * (3 - 2 * prog);
+  const z = -200 + (trainStation.stopZ + 200) * ease;
+  trainStation.train.position.z = z;
+  if (phase === 'stopped') {
+    const isMorn = h >= 8 && h < 9;
+    if (isMorn && trainStation.toastedDay !== state.day) { trainStation.toastedDay = state.day; toast('🚂 قطر الصبح وصل محطة مصر!'); }
+    if (!isMorn && trainStation.toastedEve !== state.day) { trainStation.toastedEve = state.day; toast('🚂 قطر بالليل وصل محطة مصر!'); }
+  }
+  // smoke while moving
+  const M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), SC = new THREE.Vector3();
+  trainStation.smoke.visible = phase === 'moving';
+  if (phase === 'moving') {
+    for (let i = 0; i < 5; i++) {
+      const life = ((trainStation.t * 0.6 + i / 5) % 1);
+      const sc = 0.5 + life * 1.2;
+      V.set(trainStation.tx + Math.sin(life * 4 + i) * 0.3, 3.4 + life * 2.2, z + 1.1);
+      SC.set(sc, sc, sc);
+      M.compose(V, Q.identity(), SC); trainStation.smoke.setMatrixAt(i, M);
+    }
+    trainStation.smoke.instanceMatrix.needsUpdate = true;
+  }
+  // passengers visible around arrival windows
+  const waiting = (h >= 6.5 && h < 9.8) || (h >= 16.5 && h < 19.8);
+  for (const p of trainStation.passengers) {
+    p.visible = waiting;
+    if (waiting) p.rotation.z = Math.sin(trainStation.t * 1.7 + p.userData.ph) * 0.04;
+  }
+}
+initTrainStation();
+
 updateDayTxt();
 initPalms();
 initKites();
@@ -4220,6 +4367,7 @@ function animate() {
   updateFishermen(dtReal);
   updateBakery(dtReal);
   updateShishaCafe(dtReal);
+  updateTrainStation(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
