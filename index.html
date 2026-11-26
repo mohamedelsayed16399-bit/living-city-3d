@@ -157,6 +157,8 @@ const state = {
   plots: new Map(),   // "bi,bj,p" -> {type, mesh, ...}
   version: 3,
 };
+let perfT = 0; // scaled seconds for traffic lights
+const buildAnims = []; // {mesh, t}
 
 // ============================== Renderer / Scene ==============================
 const container = document.getElementById('scene');
@@ -426,7 +428,11 @@ function placeBuilding(type, key, silent) {
   buildGroup.add(mesh);
   const bt = BUILD_TYPES[type];
   state.plots.set(key, { type, mesh, pop: bt.pop, jobs: bt.jobs });
-  if (!silent) recalcStats();
+  if (!silent) {
+    recalcStats();
+    mesh.scale.y = 0.03;
+    buildAnims.push({ mesh, t: 0, h: mesh.userData.h });
+  }
   return true;
 }
 
@@ -498,6 +504,7 @@ function mergeGeos(geos) {
   return out;
 }
 const personMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const CITIZEN_SCALE = 1.35;
 let citizensMesh = null;
 const citizens = [];
 
@@ -614,7 +621,9 @@ function updateCitizens(dtGameHours, dtReal) {
         else { cz.segT += remain / len; remain = 0; }
         const t = cz.segT;
         cz.x = a.x + dx * t; cz.z = a.z + dz * t;
+        cz.heading = Math.atan2(dx, dz);
       }
+      cz.bob = (cz.bob || 0) + dtReal * (6 + cz.speed * 2);
       if (cz.seg >= cz.path.length - 1) {
         cz.state = cz.nextState; cz.visible = false; cz.path = null;
       }
@@ -634,17 +643,77 @@ function buildCitizenInstances() {
 }
 
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
+const _UP = new THREE.Vector3(0, 1, 0);
 const ZERO_M = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
 function renderCitizens() {
   if (!citizensMesh) return;
   for (let i = 0; i < citizens.length; i++) {
     const cz = citizens[i];
     if (!cz.visible) { citizensMesh.setMatrixAt(i, ZERO_M); continue; }
-    _v.set(cz.x, 0, cz.z); _s.set(1, 1, 1); _q.identity();
+    const bobY = Math.abs(Math.sin(cz.bob || 0)) * 0.12;
+    _v.set(cz.x, bobY, cz.z); _s.set(CITIZEN_SCALE, CITIZEN_SCALE, CITIZEN_SCALE);
+    _q.setFromAxisAngle(_UP, cz.heading || 0);
     _m4.compose(_v, _q, _s);
     citizensMesh.setMatrixAt(i, _m4);
   }
   citizensMesh.instanceMatrix.needsUpdate = true;
+}
+
+// ============================== Traffic lights ==============================
+const tlSpots = [];   // {x, z, kx, kz}
+for (let k = 2; k < CFG.blocks; k += 3) for (let l = 2; l < CFG.blocks; l += 3) {
+  tlSpots.push({ x: -HALF + k * CFG.pitch, z: -HALF + l * CFG.pitch, kx: k, kz: l });
+}
+const TL_CYCLE = 9; // seconds per axis
+function tlGreenForX(spot, tSec) {
+  return (Math.floor(tSec / TL_CYCLE) + spot.kx + spot.kz) % 2 === 0;
+}
+const tlPoleMesh = (() => {
+  const g = new THREE.CylinderGeometry(0.09, 0.11, 4.2, 5); g.translate(0, 2.1, 0);
+  return new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0x2a2e33 }), tlSpots.length);
+})();
+const tlHeadMesh = (() => {
+  const g = new THREE.SphereGeometry(0.34, 6, 5); g.translate(0, 4.4, 0);
+  return new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0xffffff }), tlSpots.length);
+})();
+{
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+  tlSpots.forEach((sp, i) => {
+    v.set(sp.x + CFG.roadW / 2 + 0.8, 0, sp.z + CFG.roadW / 2 + 0.8);
+    m.compose(v, q, s);
+    tlPoleMesh.setMatrixAt(i, m); tlHeadMesh.setMatrixAt(i, m);
+    tlHeadMesh.setColorAt(i, new THREE.Color(0x00ff00));
+  });
+}
+scene.add(tlPoleMesh, tlHeadMesh);
+let tlLastPhase = -1;
+function updateTrafficLights(tSec) {
+  const phase = Math.floor(tSec / TL_CYCLE);
+  if (phase === tlLastPhase) return;
+  tlLastPhase = phase;
+  const c = new THREE.Color();
+  tlSpots.forEach((sp, i) => {
+    // green tint for the axis currently allowed; show from X-axis side
+    c.setHex(tlGreenForX(sp, tSec) ? 0x27e05a : 0xe03a27);
+    tlHeadMesh.setColorAt(i, c);
+  });
+  tlHeadMesh.instanceColor.needsUpdate = true;
+}
+function carMustStop(car) {
+  // next intersection ahead along car's axis
+  const ahead = car.pos + car.heading * 3.2;
+  const rel = ahead + HALF;
+  const k = Math.round(rel / CFG.pitch);
+  if (k < 0 || k > CFG.blocks) return false;
+  const dist = Math.abs(rel - k * CFG.pitch);
+  if (dist > 1.6) return false;
+  // find a light governing this intersection (lights only at some intersections)
+  const lineK = Math.round((car.line + HALF) / CFG.pitch);
+  const kx = car.dir === 'x' ? k : lineK, kz = car.dir === 'x' ? lineK : k;
+  const spot = tlSpots.find(s => s.kx === kx && s.kz === kz);
+  if (!spot) return false;
+  const green = car.dir === 'x' ? tlGreenForX(spot, perfT) : !tlGreenForX(spot, perfT);
+  return !green;
 }
 
 // ============================== Cars ==============================
@@ -666,11 +735,11 @@ function updateCars(dtReal) {
   for (const car of cars) {
     car.targetActive = rush ? true : (car.id % 3 !== 0); // fewer cars off-peak
     if (car.wait > 0) { car.wait -= dtReal; continue; }
-    car.pos += car.heading * car.speed * dtReal;
-    // intersection stop chance
+    if (!carMustStop(car)) car.pos += car.heading * car.speed * dtReal;
+    // occasional pause
     const rel = car.pos + HALF;
     const nearInt = Math.abs(rel / CFG.pitch - Math.round(rel / CFG.pitch)) * CFG.pitch;
-    if (nearInt < 1.2 && Math.random() < 0.02) car.wait = 1 + Math.random() * 2;
+    if (nearInt < 1.2 && Math.random() < 0.008) car.wait = 0.5 + Math.random() * 1.5;
     if (car.pos > HALF + 4) { car.pos = -HALF - 4; car.line = -HALF + (1 + Math.floor(Math.random() * (CFG.blocks - 1))) * CFG.pitch; }
     if (car.pos < -HALF - 4) { car.pos = HALF + 4; car.line = -HALF + (1 + Math.floor(Math.random() * (CFG.blocks - 1))) * CFG.pitch; }
   }
@@ -966,6 +1035,73 @@ document.getElementById('weatherBtn').onclick = () => {
   toast(WEATHER_ICONS[state.weather] + ' الطقس بقى ' + WEATHERS[state.weather]);
 };
 document.getElementById('helpBtn').onclick = () => document.getElementById('helpOverlay').style.display = 'flex';
+
+// ============================== Ambient audio (WebAudio, no files) ==============================
+let AC = null, rainGain = null, humGain = null, soundOn = false;
+function initAudio() {
+  if (AC) return;
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const master = AC.createGain(); master.gain.value = 0.0; master.connect(AC.destination);
+    AC._master = master;
+    // rain = filtered white noise
+    const len = AC.sampleRate * 2;
+    const buf = AC.createBuffer(1, len, AC.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const rainSrc = AC.createBufferSource(); rainSrc.buffer = buf; rainSrc.loop = true;
+    const rainFil = AC.createBiquadFilter(); rainFil.type = 'bandpass'; rainFil.frequency.value = 1800; rainFil.Q.value = 0.4;
+    rainGain = AC.createGain(); rainGain.gain.value = 0;
+    rainSrc.connect(rainFil); rainFil.connect(rainGain); rainGain.connect(master);
+    rainSrc.start();
+    // city hum = low brown-ish noise
+    const buf2 = AC.createBuffer(1, len, AC.sampleRate);
+    const d2 = buf2.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d2[i] = last * 3; }
+    const humSrc = AC.createBufferSource(); humSrc.buffer = buf2; humSrc.loop = true;
+    const humFil = AC.createBiquadFilter(); humFil.type = 'lowpass'; humFil.frequency.value = 220;
+    humGain = AC.createGain(); humGain.gain.value = 0;
+    humSrc.connect(humFil); humFil.connect(humGain); humGain.connect(master);
+    humSrc.start();
+  } catch (e) { AC = null; }
+}
+function updateAudio() {
+  if (!AC) return;
+  const target = soundOn ? 0.5 : 0;
+  AC._master.gain.value += (target - AC._master.gain.value) * 0.05;
+  if (rainGain) rainGain.gain.value += (((state.weather === 'rain') ? 0.5 : 0) - rainGain.gain.value) * 0.05;
+  if (humGain) {
+    const day = state.hour > 6.5 && state.hour < 20;
+    humGain.gain.value += ((day ? 0.16 : 0.05) - humGain.gain.value) * 0.05;
+  }
+}
+const soundBtn = document.createElement('button');
+soundBtn.className = 'sbtn'; soundBtn.id = 'soundBtn'; soundBtn.title = 'الصوت'; soundBtn.textContent = '🔇';
+document.getElementById('sidebtns').appendChild(soundBtn);
+soundBtn.onclick = () => {
+  if (!AC) initAudio();
+  if (AC && AC.state === 'suspended') AC.resume();
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? '🔊' : '🔇';
+  toast(soundOn ? '🔊 الصوت اشتغل — اسمع المطر وهدير المدينة' : '🔇 الصوت اتقفل');
+};
+
+// ============================== Photo mode ==============================
+const photoBtn = document.createElement('button');
+photoBtn.className = 'sbtn'; photoBtn.id = 'photoBtn'; photoBtn.title = 'صورة للمدينة'; photoBtn.textContent = '📷';
+document.getElementById('sidebtns').appendChild(photoBtn);
+photoBtn.onclick = () => {
+  const huds = document.querySelectorAll('.hud');
+  huds.forEach(h => h.style.visibility = 'hidden');
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/png');
+  huds.forEach(h => h.style.visibility = 'visible');
+  const a = document.createElement('a');
+  a.href = url; a.download = 'مدينتي.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('📷 اتاخدت صورة لمدينتك!');
+};
 document.getElementById('startBtn').onclick = () => { document.getElementById('helpOverlay').style.display = 'none'; saveGame(); };
 
 // ============================== Save / Load ==============================
@@ -1021,17 +1157,20 @@ buildCarInstances();
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
-window.__city = { state, citizens, cars, CFG, camera, fps: 0,
+window.__city = { state, citizens, cars, CFG, camera, controls, fps: 0,
+  setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
+    const out = [];
     for (const key of plotKeys()) {
       if (state.plots.has(key)) continue;
       const { x, z } = plotPos(key);
       const v = new THREE.Vector3(x, 0, z).project(camera);
       if (Math.abs(v.x) < 0.85 && Math.abs(v.y) < 0.8 && v.z < 1) {
-        return { key, sx: (v.x * 0.5 + 0.5) * innerWidth, sy: (-v.y * 0.5 + 0.5) * innerHeight };
+        out.push({ key, sx: (v.x * 0.5 + 0.5) * innerWidth, sy: (-v.y * 0.5 + 0.5) * innerHeight });
+        if (out.length >= 10) break;
       }
     }
-    return null;
+    return out;
   }
 };
 
@@ -1039,6 +1178,19 @@ function animate() {
   requestAnimationFrame(animate);
   const dtReal = Math.min(clock.getDelta(), 0.1);
   const dtGameHours = dtReal * CFG.gameHoursPerRealSec * state.speed;
+
+  // construction pop-in animation
+  for (let i = buildAnims.length - 1; i >= 0; i--) {
+    const a = buildAnims[i];
+    a.t += dtReal * 2.2;
+    const sy = a.t >= 1 ? 1 : 0.03 + 0.97 * (1 - Math.pow(1 - a.t, 3));
+    a.mesh.scale.y = sy;
+    a.mesh.position.y = (a.h / 2) * sy;
+    if (a.t >= 1) buildAnims.splice(i, 1);
+  }
+  perfT += dtReal * state.speed;
+  updateTrafficLights(perfT);
+  updateAudio();
 
   if (state.speed > 0) {
     state.hour += dtGameHours;
