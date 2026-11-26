@@ -946,6 +946,17 @@ function updateCitizens(dtGameHours, dtReal) {
       citizenStartTrip(cz, dest, leisure === 'out' && dest !== cz.home ? 'out' : 'home');
     } else if ((cz.state === 'out' || cz.state === 'sit') && h >= 20.5 && Math.random() < dtGameHours * 3) {
       citizenStartTrip(cz, cz.home, 'home');
+    } else if (isFriday() && h >= 11.3 && h < 12.2 && cz.state === 'home' && Math.random() < dtGameHours * 4) {
+      // R24: Friday prayer - walk to the nearest mosque
+      let best = null, bestD = 1e9;
+      for (const [k, r] of state.plots) {
+        if (r.type !== 'mosque') continue;
+        const p = plotPos(k), d = Math.hypot(p.x - cz.x, p.z - cz.z);
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      if (best) citizenStartTrip(cz, best, 'pray');
+    } else if (cz.state === 'pray' && h >= 13.2 && Math.random() < dtGameHours * 4) {
+      citizenStartTrip(cz, cz.home, 'home');
     }
     // movement
     if (cz.state === 'walk' && cz.path) {
@@ -967,6 +978,14 @@ function updateCitizens(dtGameHours, dtReal) {
         cz.state = cz.nextState; cz.path = null; cz.fading = 'out';
         // R22: leisure trips to a park with benches end up sitting in the sun
         if (cz.state === 'out' && Math.random() < 0.75) trySitInPark(cz);
+        // R24: worshippers gather in front of the mosque instead of vanishing
+        if (cz.state === 'pray') {
+          const mp = plotPos(cz.stateFromKey);
+          cz.fading = null; cz.fade = 1; cz.visible = true;
+          cz.x = mp.x + (Math.random() - 0.5) * 5;
+          cz.z = mp.z + 4.5 + Math.random() * 2;
+          cz.heading = Math.PI; cz.bob = 0;
+        }
       }
     }
     // door fade in/out
@@ -1706,6 +1725,10 @@ function updateClothSway(t) {
 }
 
 // ============================== Economy ==============================
+const WEEKDAYS = ['السبت', 'الحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة'];
+function weekdayName() { return WEEKDAYS[(state.day - 1) % 7]; }
+function isFriday() { return (state.day - 1) % 7 === 6; }
+function updateDayTxt() { document.getElementById('dayTxt').textContent = 'يوم ' + state.day + ' (' + weekdayName() + ')'; }
 let dayAcc = 0;
 function updateEconomy(dtGameHours) {
   dayAcc += dtGameHours;
@@ -1715,7 +1738,7 @@ function updateEconomy(dtGameHours) {
     const income = Math.round((state.population * 3 + state.jobs * 2) * (0.7 + (state.happiness || 60) / 200));
     state.money += income;
     toast(`💰 دخل اليوم: ${income} جنيه — يوم ${state.day}`);
-    document.getElementById('dayTxt').textContent = 'يوم ' + state.day;
+    updateDayTxt();
     document.getElementById('moneyTxt').textContent = Math.floor(state.money);
   }
 }
@@ -1765,7 +1788,7 @@ function showInfo(hit) {
   if (hit.kind === 'citizen') {
     const cz = hit.citizen;
     document.getElementById('infoTitle').textContent = '👤 ' + cz.name;
-    const stTxt = { home: 'في البيت', walk: 'ماشي في الشارع', work: 'في الشغل', out: 'بيتفسح', waiting: 'بيستنى الباص 🚌', sit: 'قاعد في الحديقة 🌳' }[cz.state] || cz.state;
+    const stTxt = { home: 'في البيت', walk: 'ماشي في الشارع', work: 'في الشغل', out: 'بيتفسح', waiting: 'بيستنى الباص 🚌', sit: 'قاعد في الحديقة 🌳', pray: 'في صلاة الجمعة 🕌' }[cz.state] || cz.state;
     rows.innerHTML =
       row('الشغلانة', cz.job) + row('الحالة دلوقتي', stTxt) +
       row('سرعة المشي', cz.speed.toFixed(1));
@@ -2180,7 +2203,7 @@ function updateFireworks(dtReal) {
 
 // ============================== Seed city ==============================
 function seedCity() {
-  if (loadGame()) { document.getElementById('dayTxt').textContent = 'يوم ' + state.day; return; }
+  if (loadGame()) { updateDayTxt(); return; }
   const rng = () => Math.random();
   const ci = Math.floor(CFG.blocks / 2), cj = Math.floor(CFG.blocks / 2);
   for (let i = 0; i < CFG.blocks; i++) for (let j = 0; j < CFG.blocks; j++) {
@@ -2203,6 +2226,7 @@ function seedCity() {
 buildBusStops();
 buildStalls();
 seedCity();
+updateDayTxt();
 initPalms();
 buildClockTower();
 buildBalconyInstances();
