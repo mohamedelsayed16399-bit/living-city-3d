@@ -4864,6 +4864,123 @@ function updatePedBridge(dtReal) {
 }
 initPedBridge();
 
+// R63: Nile dinner cruise (مركب العشاء النيلي) — slow two-deck evening boat with lit tables, oud player, music notes
+let dinnerCruise = null;
+function initDinnerCruise() {
+  if (dinnerCruise) return;
+  const grp = new THREE.Group();
+  // dark wooden hull, longer and lower than the day cruise boat
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.8, 2.2), new THREE.MeshLambertMaterial({ color: 0x4a3220 }));
+  hull.position.y = 0.4;
+  const bow = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.8, 3, 1), new THREE.MeshLambertMaterial({ color: 0x4a3220 }));
+  bow.rotation.y = Math.PI / 2;
+  bow.position.set(4.1, 0.4, 0);
+  const stern = bow.clone(); stern.position.x = -4.1; stern.rotation.y = -Math.PI / 2;
+  grp.add(hull, bow, stern);
+  // lower deck with warm glowing windows
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.1, 1.8), new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
+  cabin.position.y = 1.35;
+  grp.add(cabin);
+  const winM = new THREE.MeshBasicMaterial({ color: 0xffc46b });
+  for (let i = 0; i < 6; i++) {
+    for (const s of [-0.91, 0.91]) {
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.5), winM);
+      w.position.set(-2.6 + i * 1.05, 1.4, s);
+      if (s < 0) w.rotation.y = Math.PI;
+      grp.add(w);
+    }
+  }
+  // open upper deck with white-cloth tables + candle glow
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.15, 1.9), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+  deck.position.y = 1.98;
+  grp.add(deck);
+  const candles = [];
+  for (let i = 0; i < 4; i++) {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 8), new THREE.MeshLambertMaterial({ color: 0xf6f2ea }));
+    t.position.set(-2.1 + i * 1.4, 2.1, i % 2 ? 0.45 : -0.45);
+    grp.add(t);
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffd75a }));
+    c.position.set(-2.1 + i * 1.4, 2.22, i % 2 ? 0.45 : -0.45);
+    grp.add(c); candles.push(c);
+  }
+  // gold bulb string around the roof edge
+  const roofM = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.1, 2.0), new THREE.MeshLambertMaterial({ color: 0x2e2016 }));
+  roofM.position.y = 2.75;
+  grp.add(roofM);
+  for (const px of [-2.9, 2.9]) for (const pz of [-0.9, 0.9]) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.75, 5), new THREE.MeshLambertMaterial({ color: 0x4a3220 }));
+    p.position.set(px, 2.4, pz);
+    grp.add(p);
+  }
+  const bulbs = [];
+  for (let i = 0; i < 14; i++) {
+    const a = i / 14 * Math.PI * 2;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffd75a }));
+    b.position.set(Math.cos(a) * 3.0, 2.68, Math.sin(a) * 1.0);
+    grp.add(b); bulbs.push(b);
+  }
+  // oud player on the upper deck front
+  const oud = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.65, 6), new THREE.MeshLambertMaterial({ color: 0xc22a2a }));
+  body.position.y = 0.35;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshLambertMaterial({ color: 0xa8763e }));
+  head.position.y = 0.82;
+  const oudBody = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a2b }));
+  oudBody.scale.set(1, 1.25, 0.6);
+  oudBody.position.set(0.28, 0.45, 0.15);
+  oud.add(body, head, oudBody);
+  oud.position.set(2.5, 2.05, 0);
+  grp.add(oud);
+  // music notes
+  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+  const g2 = cv.getContext('2d');
+  g2.fillStyle = '#ffe27a'; g2.font = 'bold 48px Tahoma'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.fillText('♪', 32, 34);
+  const noteTex = new THREE.CanvasTexture(cv);
+  const notes = [];
+  for (let i = 0; i < 4; i++) {
+    const n = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), new THREE.MeshBasicMaterial({ map: noteTex, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+    n.userData = { ph: i / 4 };
+    grp.add(n); notes.push(n);
+  }
+  grp.visible = false;
+  scene.add(grp);
+  dinnerCruise = { grp, bulbs, candles, notes, oud, t: 0, toastedDay: -1 };
+}
+function updateDinnerCruise(dtReal) {
+  if (!dinnerCruise) return;
+  const d = dinnerCruise;
+  d.t += dtReal;
+  const h = state.hour;
+  const on = h >= 19 || h < 1;
+  d.grp.visible = on;
+  if (!on) return;
+  if (d.toastedDay !== state.day) {
+    d.toastedDay = state.day;
+    toast('🍽️ مركب العشاء النيلي بدأ رحلته على ضوء الشموع!');
+  }
+  // slow loop along the river, west lane
+  const P = 110, t = d.t % P;
+  const ease = k => k * k * (3 - 2 * k);
+  let z, dir;
+  if (t < 50) { z = -75 + 150 * ease(t / 50); dir = 1; }
+  else if (t < 60) { z = 75; dir = 1; }
+  else { z = 75 - 150 * ease((t - 60) / 50); dir = -1; }
+  d.grp.position.set(-16.2, 0, z);
+  d.grp.rotation.y = dir > 0 ? 0 : Math.PI;
+  d.bulbs.forEach((b, i) => b.material.color.setHSL(0.11, 0.9, 0.55 + Math.sin(d.t * 3 + i) * 0.12));
+  d.candles.forEach((c, i) => c.material.color.setHSL(0.1, 0.95, 0.5 + Math.abs(Math.sin(d.t * 5 + i * 2)) * 0.2));
+  d.oud.rotation.y = Math.sin(d.t * 0.8) * 0.4;
+  for (const n of d.notes) {
+    const k = (d.t * 0.2 + n.userData.ph) % 1;
+    n.position.set(2.5 + Math.sin(k * 8) * 0.5, 3.0 + k * 2.4, Math.cos(k * 6) * 0.5);
+    n.material.opacity = 1 - k;
+    n.rotation.y = d.t * 1.5 + n.userData.ph * 6;
+  }
+}
+initDinnerCruise();
+
+
 
 
 
@@ -5077,6 +5194,7 @@ function animate() {
   updateTram(dtReal);
   updateNakheel(dtReal);
   updatePedBridge(dtReal);
+  updateDinnerCruise(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
