@@ -101,6 +101,7 @@
   <div class="tool" data-tool="office"><span class="ic">🏢</span>برج<span class="cost">1500 💰</span></div>
   <div class="tool" data-tool="park"><span class="ic">🌳</span>حديقة<span class="cost">200 💰</span></div>
   <div class="tool" data-tool="school"><span class="ic">🏫</span>مدرسة<span class="cost">2200 💰</span></div>
+  <div class="tool" data-tool="mosque"><span class="ic">🕌</span>مسجد<span class="cost">1800 💰</span></div>
   <div class="tool" data-tool="hospital"><span class="ic">🏥</span>مستشفى<span class="cost">4000 💰</span></div>
   <div class="tool" data-tool="bulldoze"><span class="ic">🚜</span>هدم<span class="cost">+50%</span></div>
 </div>
@@ -151,7 +152,7 @@ const CFG = {
 const HALF = CFG.blocks * CFG.pitch / 2; // 117
 const RIVER_K = 4;                       // vertical road line index replaced by a river
 const RIVER_X = -HALF + RIVER_K * CFG.pitch;
-const COSTS = { house: 300, shop: 800, office: 1500, park: 200, hospital: 4000, school: 2200 };
+const COSTS = { house: 300, shop: 800, office: 1500, park: 200, hospital: 4000, school: 2200, mosque: 1800 };
 const AR_NAMES = ['أحمد','محمد','محمود','مصطفى','يوسف','علي','حسن','كريم','طارق','عمر','سارة','فاطمة','مريم','نور','هدى','منى','آية','دينا','ياسمين','سلمى','خالد','إبراهيم','عبدالله','زياد','هشام','ولاء','رنا','بسمة','شيماء','إيمان'];
 const JOBS = ['مهندس','دكتور','مدرس','محاسب','مبرمج','طبيب أسنان','صيدلي','تاجر','سائق','فنان','موظف بنك','طاهٍ','نجار','كهربائي','مصمم','محامي'];
 
@@ -449,6 +450,7 @@ const BUILD_TYPES = {
   office: { hMin: 16,  hMax: 42, floors: 10, pop: 0, jobs: 14, label: 'برج مكاتب' },
   hospital: { hMin: 9, hMax: 13, floors: 4, pop: 0, jobs: 18, label: 'مستشفى', happy: 8 },
   school:   { hMin: 5, hMax: 7,  floors: 2, pop: 0, jobs: 6,  label: 'مدرسة', happy: 5 },
+  mosque:   { hMin: 6, hMax: 8,  floors: 2, pop: 0, jobs: 2,  label: 'مسجد', happy: 7 },
 };
 
 // ============================== Plots & buildings ==============================
@@ -554,6 +556,26 @@ function createBuildingMesh(type, x, z) {
     const flag = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.05), new THREE.MeshBasicMaterial({ color: 0x2f6fed }));
     flag.position.set(0.48, h / 2 + 2.2, 0);
     mesh.add(pole, flag);
+  }
+  if (type === 'mosque') {
+    const domeR = Math.min(w, d) * 0.42;
+    const domeMat = new THREE.MeshLambertMaterial({ color: 0x1e7a4c });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(domeR, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
+    dome.position.y = h / 2;
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(domeR * 0.98, domeR * 1.04, 0.9, 12), new THREE.MeshLambertMaterial({ color: 0xf0ede4 }));
+    drum.position.y = h / 2 + 0.45;
+    dome.position.y = h / 2 + 0.9;
+    const spike = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2, 4), roofMat);
+    spike.position.y = h / 2 + 0.9 + domeR + 0.5;
+    // minaret at a corner
+    const mh = h + 7;
+    const minaret = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.46, mh, 8), new THREE.MeshLambertMaterial({ color: 0xf0ede4 }));
+    minaret.position.set(w / 2 + 0.4, mh / 2 - h / 2, d / 2 + 0.4);
+    const balcony = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.35, 8), domeMat);
+    balcony.position.set(w / 2 + 0.4, mh * 0.62 - h / 2, d / 2 + 0.4);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.5, 8), domeMat);
+    cap.position.set(w / 2 + 0.4, mh + 0.75 - h / 2, d / 2 + 0.4);
+    mesh.add(drum, dome, spike, minaret, balcony, cap);
   }
   if (type === 'shop') {
     const si = Math.abs(Math.floor(x * 7 + z * 13)) % SHOP_SIGN_DEFS.length;
@@ -2154,7 +2176,7 @@ function initBenches() {
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
-window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0,
+window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
