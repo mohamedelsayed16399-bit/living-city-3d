@@ -3961,6 +3961,64 @@ function updateBakery(dtReal) {
 }
 initBakery();
 
+// R55: late-night shisha cafe sets on the west bank (قعدة قهوة على النيل)
+let shishaCafe = null;
+function initShishaCafe() {
+  if (shishaCafe) return;
+  const sets = [];
+  const tableG = new THREE.CylinderGeometry(0.55, 0.5, 0.12, 10);
+  const tableM = new THREE.MeshLambertMaterial({ color: 0x8a8f98 });
+  const legG = new THREE.CylinderGeometry(0.06, 0.06, 0.6, 6);
+  const chairG = new THREE.BoxGeometry(0.45, 0.5, 0.45);
+  const chairM = new THREE.MeshLambertMaterial({ color: 0x9a3b2e });
+  const pipeG = new THREE.CylinderGeometry(0.04, 0.06, 0.55, 6);
+  const pipeM = new THREE.MeshLambertMaterial({ color: 0x444a55 });
+  const coalG = new THREE.SphereGeometry(0.07, 6, 6);
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 3; i++) {
+    const z = 36 + i * 9;
+    const grp = new THREE.Group();
+    const tbl = new THREE.Mesh(tableG, tableM); tbl.position.y = 0.62;
+    const leg = new THREE.Mesh(legG, tableM); leg.position.y = 0.3;
+    grp.add(tbl, leg);
+    const pipe = new THREE.Mesh(pipeG, pipeM); pipe.position.set(0.15, 0.95, 0);
+    const coal = new THREE.Mesh(coalG, new THREE.MeshBasicMaterial({ color: 0xff4411 }));
+    coal.position.set(0.15, 1.25, 0);
+    grp.add(pipe, coal);
+    for (let k = 0; k < 2; k++) {
+      const a = k * Math.PI + 0.5;
+      const ch = new THREE.Mesh(chairG, chairM);
+      ch.position.set(Math.cos(a) * 0.95, 0.25, Math.sin(a) * 0.95);
+      grp.add(ch);
+      const p = new THREE.Group();
+      const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.55, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.4, 0.45) }));
+      shirt.position.y = 0.62;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[(i + k) % 3] }));
+      head.position.y = 1.05;
+      p.add(shirt, head);
+      p.position.set(Math.cos(a) * 0.95, 0.28, Math.sin(a) * 0.95);
+      p.rotation.y = -a + Math.PI / 2;
+      grp.add(p);
+    }
+    grp.position.set(RIVER_X - 7.3, 0, z);
+    grp.visible = false;
+    scene.add(grp);
+    sets.push({ grp, coal, ph: Math.random() * 6 });
+  }
+  shishaCafe = { sets, t: 0 };
+}
+function updateShishaCafe(dtReal) {
+  if (!shishaCafe) return;
+  shishaCafe.t += dtReal;
+  const h = state.hour;
+  const open = h >= 18 || h < 1;
+  for (const st of shishaCafe.sets) {
+    st.grp.visible = open;
+    if (open) st.coal.material.color.setHex(Math.sin(shishaCafe.t * 3 + st.ph) > 0 ? 0xff5522 : 0x992200);
+  }
+}
+initShishaCafe();
+
 updateDayTxt();
 initPalms();
 initKites();
@@ -4161,6 +4219,7 @@ function animate() {
   updatePigeonLoft(dtReal);
   updateFishermen(dtReal);
   updateBakery(dtReal);
+  updateShishaCafe(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
