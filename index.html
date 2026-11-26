@@ -6047,6 +6047,75 @@ function updateKiteFest(dtReal) {
 }
 initKiteFest();
 
+// R75: sunrise hot-air balloons (بلونات الصبح) over the river 5-8:30 — Luxor style, drifting with burner flicker
+let balloons = null;
+function initBalloons() {
+  if (balloons) return;
+  const patterns = [
+    [0xe84545, 0xf2e020], [0x2f9de8, 0xffffff], [0xe88a2f, 0x8a2f2f], [0x5ac85a, 0xf2c020]
+  ];
+  const list = [];
+  for (let i = 0; i < 4; i++) {
+    const grp = new THREE.Group();
+    // striped envelope: 6 gore segments alternating colors
+    const [c1, c2] = patterns[i];
+    for (let sgm = 0; sgm < 6; sgm++) {
+      const geo = new THREE.SphereGeometry(2.6, 4, 8, sgm * Math.PI / 3, Math.PI / 3, 0, Math.PI * 0.72);
+      const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: sgm % 2 ? c1 : c2, side: THREE.DoubleSide }));
+      m.position.y = 1.2;
+      grp.add(m);
+    }
+    // basket
+    const basket = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 1.0), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    basket.position.y = -2.6;
+    grp.add(basket);
+    // ropes
+    const ropeMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+    for (const [rx, rz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) {
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.6, 4), ropeMat);
+      rope.position.set(rx, -1.4, rz);
+      grp.add(rope);
+    }
+    // burner flame
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 6), new THREE.MeshBasicMaterial({ color: 0xffa030 }));
+    flame.position.y = -1.7;
+    grp.add(flame);
+    grp.visible = false;
+    scene.add(grp);
+    list.push({ grp, flame, ph: i * 1.9, z0: -55 + i * 32, x0: -16 + (i % 2) * 6, sp: 0.5 + i * 0.12 });
+  }
+  balloons = { list, t: 0, toastedDay: -1 };
+}
+function updateBalloons(dtReal) {
+  if (!balloons) return;
+  const b = balloons;
+  b.t += dtReal;
+  const h = state.hour;
+  const up = h >= 5 && h < 8.5;
+  if (up && b.toastedDay !== state.day) {
+    b.toastedDay = state.day;
+    toast('🎈 بلونات الصبح طالعة فوق النيل — منظر الأقصر على طول!');
+  }
+  for (const bl of b.list) {
+    bl.grp.visible = up;
+    if (!up) continue;
+    // slow drift north then loop, gentle bob and rise
+    const cycle = 130;
+    const zRaw = (bl.z0 + b.t * bl.sp) % cycle;
+    const z = zRaw > 65 ? 65 - (zRaw - 65) : zRaw; // ping-pong -65..65
+    const rise = Math.min(1, (h - 5) / 1.2); // climb after launch
+    const y = 6 + rise * 22 + Math.sin(b.t * 0.4 + bl.ph) * 1.6;
+    bl.grp.position.set(bl.x0 + Math.sin(b.t * 0.15 + bl.ph) * 3, y, z);
+    bl.grp.rotation.y = Math.sin(b.t * 0.1 + bl.ph) * 0.3;
+    // burner flicker, stronger while climbing
+    const flick = 0.7 + Math.sin(b.t * 9 + bl.ph) * 0.3;
+    bl.flame.scale.set(flick, (0.6 + rise * 0.8) * flick, flick);
+    bl.flame.visible = rise < 0.98 || Math.sin(b.t * 2 + bl.ph) > 0;
+  }
+}
+initBalloons();
+
+
 
 
 
@@ -6282,6 +6351,7 @@ function animate() {
   updateZooCorner(dtReal);
   updateGarbageTruck(dtReal);
   updateKiteFest(dtReal);
+  updateBalloons(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
