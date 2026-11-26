@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>المدينة الحية — مدينة 3D تنبض بالحياة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0b1020; font-family:'Cairo',Tahoma,Arial,sans-serif; touch-action:none; }
+  #scene { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  .hud { position:fixed; z-index:10; color:#fff; user-select:none; }
+  #topbar { top:0; right:0; left:0; display:flex; align-items:center; gap:6px; padding:8px 10px;
+    background:linear-gradient(180deg, rgba(8,12,28,.85), rgba(8,12,28,.55) 70%, transparent); flex-wrap:wrap; }
+  .pill { background:rgba(20,28,52,.85); border:1px solid rgba(255,255,255,.12); border-radius:999px;
+    padding:4px 12px; font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px; white-space:nowrap; backdrop-filter:blur(6px); }
+  .pill small { opacity:.75; font-weight:400; }
+  #clockPill { min-width:130px; justify-content:center; }
+  .spd { cursor:pointer; border:1px solid rgba(255,255,255,.15); background:rgba(20,28,52,.85); color:#fff;
+    border-radius:10px; width:34px; height:30px; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .spd.on { background:#2f6fed; border-color:#2f6fed; }
+
+  #toolbar { bottom:0; right:0; left:0; display:flex; justify-content:center; gap:8px; padding:10px 8px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(0deg, rgba(8,12,28,.9), rgba(8,12,28,.5) 70%, transparent); flex-wrap:wrap; }
+  .tool { cursor:pointer; width:64px; padding:7px 2px 5px; border-radius:14px; border:1px solid rgba(255,255,255,.14);
+    background:rgba(20,28,52,.88); color:#fff; text-align:center; font-size:11px; font-weight:600; transition:transform .08s, background .15s; }
+  .tool .ic { font-size:22px; display:block; line-height:1.15; }
+  .tool .cost { display:block; font-size:10px; opacity:.7; font-weight:400; }
+  .tool.on { background:#2f6fed; border-color:#7aa5ff; transform:translateY(-3px); }
+  .tool:active { transform:scale(.94); }
+
+  #sidebtns { left:8px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:8px; }
+  .sbtn { cursor:pointer; width:44px; height:44px; border-radius:12px; border:1px solid rgba(255,255,255,.15);
+    background:rgba(20,28,52,.85); color:#fff; font-size:20px; display:flex; align-items:center; justify-content:center; }
+
+  #infoCard { top:64px; right:10px; width:min(280px, 82vw); background:rgba(15,22,44,.94); border:1px solid rgba(255,255,255,.14);
+    border-radius:16px; padding:14px; display:none; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  #infoCard h3 { font-size:16px; margin-bottom:6px; }
+  #infoCard .row { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; border-bottom:1px dashed rgba(255,255,255,.08); }
+  #infoCard .row span:last-child { font-weight:700; }
+  #infoClose { position:absolute; top:8px; left:10px; cursor:pointer; opacity:.7; font-size:16px; background:none;border:none;color:#fff; }
+
+  #toast { bottom:110px; right:50%; transform:translateX(50%); background:rgba(15,22,44,.95); border:1px solid rgba(255,255,255,.2);
+    padding:10px 18px; border-radius:12px; font-size:14px; font-weight:600; display:none; max-width:88vw; text-align:center; z-index:30; }
+
+  #helpOverlay { position:fixed; inset:0; z-index:50; background:rgba(5,8,18,.82); display:flex; align-items:center; justify-content:center; padding:20px; }
+  #helpBox { background:linear-gradient(160deg,#18223f,#0d1428); border:1px solid rgba(255,255,255,.15); border-radius:20px;
+    padding:26px 22px; max-width:420px; width:100%; text-align:center; color:#fff; max-height:88vh; overflow-y:auto; }
+  #helpBox h1 { font-size:24px; margin-bottom:4px; }
+  #helpBox .sub { opacity:.75; font-size:13px; margin-bottom:16px; }
+  #helpBox .steps { text-align:right; font-size:14px; line-height:2; margin-bottom:18px; }
+  #helpBox .steps b { color:#8db4ff; }
+  #startBtn { cursor:pointer; background:#2f6fed; border:none; color:#fff; font-family:inherit; font-size:17px; font-weight:800;
+    padding:12px 40px; border-radius:14px; box-shadow:0 6px 20px rgba(47,111,237,.45); }
+  #startBtn:active { transform:scale(.96); }
+
+  #loading { position:fixed; inset:0; z-index:60; background:#0b1020; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; gap:14px; }
+  .spin { width:44px; height:44px; border:4px solid rgba(255,255,255,.15); border-top-color:#2f6fed; border-radius:50%; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  @media (max-width:600px) {
+    .pill { font-size:12px; padding:3px 9px; }
+    #clockPill { min-width:105px; }
+    .tool { width:56px; font-size:10px; }
+    .tool .ic { font-size:19px; }
+    #sidebtns { top:auto; bottom:118px; transform:none; }
+    .sbtn { width:38px; height:38px; font-size:17px; }
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="loading"><div class="spin"></div><div>بنبني المدينة…</div></div>
+
+<div class="hud" id="topbar">
+  <div class="pill" id="clockPill">🕐 <span id="clockTxt">07:00</span> <small id="dayTxt">يوم 1</small></div>
+  <div class="pill" id="weatherPill">☀️ <span id="weatherTxt">مشمس</span></div>
+  <div class="pill">💰 <span id="moneyTxt">5000</span></div>
+  <div class="pill">👥 <span id="popTxt">0</span></div>
+  <button class="spd" id="spd0" title="إيقاف">⏸</button>
+  <button class="spd on" id="spd1" title="سرعة عادية">▶</button>
+  <button class="spd" id="spd4" title="سريع">⏩</button>
+</div>
+
+<div class="hud" id="sidebtns">
+  <button class="sbtn" id="camBtn" title="إعادة الكاميرا">🎥</button>
+  <button class="sbtn" id="weatherBtn" title="تغيير الطقس">🌦️</button>
+  <button class="sbtn" id="helpBtn" title="مساعدة">❓</button>
+</div>
+
+<div class="hud" id="toolbar">
+  <div class="tool" data-tool="house"><span class="ic">🏠</span>بيت<span class="cost">300 💰</span></div>
+  <div class="tool" data-tool="shop"><span class="ic">🏪</span>محل<span class="cost">800 💰</span></div>
+  <div class="tool" data-tool="office"><span class="ic">🏢</span>برج<span class="cost">1500 💰</span></div>
+  <div class="tool" data-tool="park"><span class="ic">🌳</span>حديقة<span class="cost">200 💰</span></div>
+  <div class="tool" data-tool="bulldoze"><span class="ic">🚜</span>هدم<span class="cost">+50%</span></div>
+</div>
+
+<div class="hud" id="infoCard">
+  <button id="infoClose">✕</button>
+  <h3 id="infoTitle">مبنى</h3>
+  <div id="infoRows"></div>
+</div>
+
+<div class="hud" id="toast"></div>
+
+<div id="helpOverlay">
+  <div id="helpBox">
+    <h1>🏙️ المدينة الحية</h1>
+    <div class="sub">مدينة ثلاثية الأبعاد تنبض بالحياة — ناس تمشي، عربيات تتحرك، نهار وليل وطقس متغير</div>
+    <div class="steps">
+      🖱️ <b>اسحب</b> لتدوير الكاميرا، وبإيدك التانية أو العجلة للتقريب<br>
+      🏗️ اختار أداة من الشريط اللي تحت ودوس على أرض فاضية <b>للبناء</b><br>
+      👆 دوس على أي مبنى أو مواطن <b>لمعرفة تفاصيله</b><br>
+      ⏩ تحكم في سرعة الزمن من فوق، والطقس بيتغير لوحده<br>
+      💰 كل يوم بيتدخللك دخل من السكان — ابني أكتر، كبّر مدينتك
+    </div>
+    <button id="startBtn">ابدأ البناء 🚀</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+'use strict';
+window.__errors = [];
+window.addEventListener('error', e => { window.__errors.push(String(e.message)); });
+
+// ============================== Config ==============================
+const IS_MOBILE = /Android|iPhone|iPad/i.test(navigator.userAgent) || (navigator.deviceMemory && navigator.deviceMemory <= 4) || Math.min(screen.width, screen.height) < 500;
+const CFG = {
+  blocks: 9,            // city blocks per side
+  pitch: 26,            // block pitch (road center to road center)
+  roadW: 8,
+  plotSize: 8,
+  citizens: IS_MOBILE ? 55 : 130,
+  cars: IS_MOBILE ? 14 : 32,
+  shadows: !IS_MOBILE,
+  pixelRatio: Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2),
+  gameHoursPerRealSec: 0.25, // at 1x speed: full day = 96 seconds
+};
+const HALF = CFG.blocks * CFG.pitch / 2; // 117
+const COSTS = { house: 300, shop: 800, office: 1500, park: 200 };
+const AR_NAMES = ['أحمد','محمد','محمود','مصطفى','يوسف','علي','حسن','كريم','طارق','عمر','سارة','فاطمة','مريم','نور','هدى','منى','آية','دينا','ياسمين','سلمى','خالد','إبراهيم','عبدالله','زياد','هشام','ولاء','رنا','بسمة','شيماء','إيمان'];
+const JOBS = ['مهندس','دكتور','مدرس','محاسب','مبرمج','طبيب أسنان','صيدلي','تاجر','سائق','فنان','موظف بنك','طاهٍ','نجار','كهربائي','مصمم','محامي'];
+
+// ============================== State ==============================
+const state = {
+  money: 5000, day: 1, hour: 7.0, speed: 1,
+  weather: 'sunny', weatherT: 0,
+  population: 0, jobs: 0,
+  tool: null,
+  plots: new Map(),   // "bi,bj,p" -> {type, mesh, ...}
+  version: 3,
+};
+
+// ============================== Renderer / Scene ==============================
+const container = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE, powerPreference: 'high-performance' });
+renderer.setPixelRatio(CFG.pixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+if (CFG.shadows) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; }
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87b5e0);
+scene.fog = new THREE.Fog(0x87b5e0, 120, 420);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 900);
+camera.position.set(90, 85, 90);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI * 0.46;
+controls.minDistance = 20;
+controls.maxDistance = 320;
+controls.enablePan = true;
+
+// Lights
+const hemi = new THREE.HemisphereLight(0xbfd9ff, 0x8a7a5a, 0.75);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(80, 120, 40);
+if (CFG.shadows) {
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const sc = 150;
+  sun.shadow.camera.left = -sc; sun.shadow.camera.right = sc;
+  sun.shadow.camera.top = sc; sun.shadow.camera.bottom = -sc;
+  sun.shadow.camera.far = 500;
+}
+scene.add(sun);
+const moonLight = new THREE.DirectionalLight(0x8899ff, 0.0);
+moonLight.position.set(-60, 100, -30);
+scene.add(moonLight);
+
+// ============================== Ground (one big canvas texture) ==============================
+function blockCenter(i) { return -HALF + CFG.pitch / 2 + i * CFG.pitch; }
+
+function makeGroundTexture() {
+  const S = 2048, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  const w2c = S / (HALF * 2 + 40); // world to canvas scale, margin 20
+  const W = (x) => (x + HALF + 20) * w2c;
+  // grass base
+  g.fillStyle = '#4d7a3f'; g.fillRect(0, 0, S, S);
+  // subtle grass noise
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = 'rgba(' + (60 + Math.random() * 40 | 0) + ',' + (110 + Math.random() * 40 | 0) + ',' + (50 + Math.random() * 25 | 0) + ',0.35)';
+    g.fillRect(Math.random() * S, Math.random() * S, 3, 3);
+  }
+  const roadC = '#33373d', sideC = '#9aa0a6';
+  const rw = CFG.roadW * w2c, sw = 2.2 * w2c;
+  // roads (vertical + horizontal at road lines)
+  for (let k = 0; k <= CFG.blocks; k++) {
+    const x = -HALF + k * CFG.pitch;
+    // sidewalk
+    g.fillStyle = sideC;
+    g.fillRect(W(x) - rw / 2 - sw, 0, rw + sw * 2, S);
+    g.fillRect(0, W(x) - rw / 2 - sw, S, rw + sw * 2);
+    // asphalt
+    g.fillStyle = roadC;
+    g.fillRect(W(x) - rw / 2, 0, rw, S);
+    g.fillRect(0, W(x) - rw / 2, S, rw);
+  }
+  // lane dashes
+  g.strokeStyle = '#e8e4c8'; g.lineWidth = Math.max(1.5, 0.28 * w2c); g.setLineDash([4 * w2c, 3 * w2c]);
+  for (let k = 0; k <= CFG.blocks; k++) {
+    const x = -HALF + k * CFG.pitch;
+    g.beginPath(); g.moveTo(W(x), 0); g.lineTo(W(x), S); g.stroke();
+    g.beginPath(); g.moveTo(0, W(x)); g.lineTo(S, W(x)); g.stroke();
+  }
+  g.setLineDash([]);
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return tex;
+}
+{
+  const gsize = HALF * 2 + 40;
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(gsize, gsize),
+    new THREE.MeshLambertMaterial({ map: makeGroundTexture() })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = CFG.shadows;
+  scene.add(ground);
+}
+
+// ============================== Building facades (shared canvas textures) ==============================
+function makeFacade(wallColor, floors, lit) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = lit ? '#000000' : wallColor; g.fillRect(0, 0, 128, 256);
+  if (!lit) {
+    // slight vertical gradient
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, 'rgba(255,255,255,0.08)'); grad.addColorStop(1, 'rgba(0,0,0,0.15)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 256);
+  }
+  const rows = Math.min(floors, 12), cols = 4;
+  const wh = 200 / rows, ww = 108 / cols;
+  // deterministic-ish lit pattern per texture so day/night windows match
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const x = 10 + col * ww + 3, y = 14 + r * wh + 2;
+      const litHere = rnd() < 0.42;
+      const warmColor = rnd() < 0.5; // consumed in both modes so day/night sequences match
+      if (lit) {
+        if (!litHere) continue; // stay black
+        g.fillStyle = warmColor ? '#ffd57a' : '#ffe9b0';
+        g.fillRect(x, y, ww - 7, wh - 7);
+      } else {
+        g.fillStyle = '#22303e';
+        g.fillRect(x, y, ww - 7, wh - 7);
+        g.fillStyle = 'rgba(255,255,255,0.25)';
+        g.fillRect(x, y, ww - 7, 2);
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  return tex;
+}
+const WALLS = ['#c9b8a3', '#b8c4ce', '#d4c9b0', '#a8b8c8', '#c8a898', '#9fb89a', '#bfb0c8', '#d0b89e'];
+const facadeCache = {};
+function facadeMats(type, floors) {
+  const key = type + '_' + Math.min(floors, 12);
+  if (facadeCache[key]) return facadeCache[key];
+  const mats = [];
+  for (let i = 0; i < 4; i++) {
+    const wc = WALLS[(key.length * 7 + i * 3 + floors) % WALLS.length];
+    mats.push(new THREE.MeshLambertMaterial({
+      map: makeFacade(wc, floors, false),
+      emissiveMap: makeFacade(wc, floors, true),
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0,
+    }));
+  }
+  facadeCache[key] = mats;
+  return mats;
+}
+const roofMat = new THREE.MeshLambertMaterial({ color: 0x5a5f6a });
+
+const BUILD_TYPES = {
+  house:  { hMin: 3.2, hMax: 5.5, floors: 2, pop: 4, jobs: 0, label: 'بيت' },
+  shop:   { hMin: 5,   hMax: 8,  floors: 3, pop: 1, jobs: 4, label: 'محل تجاري' },
+  office: { hMin: 16,  hMax: 42, floors: 10, pop: 0, jobs: 14, label: 'برج مكاتب' },
+};
+
+// ============================== Plots & buildings ==============================
+const buildGroup = new THREE.Group();
+scene.add(buildGroup);
+const plotMeshes = [];   // invisible plot hit-boxes for raycast
+const plotIndex = new Map(); // mesh -> key
+
+function plotKeys() {
+  const keys = [];
+  for (let i = 0; i < CFG.blocks; i++) for (let j = 0; j < CFG.blocks; j++)
+    for (let p = 0; p < 4; p++) keys.push(i + ',' + j + ',' + p);
+  return keys;
+}
+function plotPos(key) {
+  const [i, j, p] = key.split(',').map(Number);
+  const cx = blockCenter(i), cz = blockCenter(j);
+  const off = 4.6;
+  const dx = (p % 2 === 0 ? -off : off), dz = (p < 2 ? -off : off);
+  return { x: cx + dx, z: cz + dz };
+}
+
+const plotGeo = new THREE.BoxGeometry(CFG.plotSize, 0.3, CFG.plotSize);
+const plotFreeMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.0 });
+for (const key of plotKeys()) {
+  const { x, z } = plotPos(key);
+  const m = new THREE.Mesh(plotGeo, plotFreeMat);
+  m.position.set(x, 0.15, z);
+  m.visible = false;
+  scene.add(m);
+  plotMeshes.push(m);
+  plotIndex.set(m, key);
+}
+
+// instanced trees (trunk + foliage share index)
+const MAX_TREES = 500;
+const trunkGeo = new THREE.CylinderGeometry(0.14, 0.2, 1.4, 5); trunkGeo.translate(0, 0.7, 0);
+const folGeo = new THREE.ConeGeometry(1.1, 2.6, 6); folGeo.translate(0, 2.4, 0);
+const trunkMesh = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x6b4a2f }), MAX_TREES);
+const folMesh = new THREE.InstancedMesh(folGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), MAX_TREES);
+scene.add(trunkMesh, folMesh);
+let treeCount = 0;
+const treeOwner = new Array(MAX_TREES).fill(null); // tree index -> plot key
+const _tm = new THREE.Matrix4(), _tq = new THREE.Quaternion(), _tv = new THREE.Vector3(), _ts = new THREE.Vector3();
+const _tc = new THREE.Color();
+const ZERO_TM = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
+for (let i = 0; i < MAX_TREES; i++) { trunkMesh.setMatrixAt(i, ZERO_TM); folMesh.setMatrixAt(i, ZERO_TM); folMesh.setColorAt(i, _tc.setHex(0x3a7a2f)); }
+function makeTree(x, z, scale, ownerKey) {
+  if (treeCount >= MAX_TREES) return;
+  const s = scale || 1, i = treeCount++;
+  _tv.set(x, 0, z); _ts.set(s, s, s); _tq.identity();
+  _tm.compose(_tv, _tq, _ts);
+  trunkMesh.setMatrixAt(i, _tm); folMesh.setMatrixAt(i, _tm);
+  folMesh.setColorAt(i, _tc.setHSL(0.32 + Math.random() * 0.06, 0.55, 0.28 + Math.random() * 0.1));
+  trunkMesh.instanceMatrix.needsUpdate = true; folMesh.instanceMatrix.needsUpdate = true;
+  if (folMesh.instanceColor) folMesh.instanceColor.needsUpdate = true;
+  treeOwner[i] = ownerKey || null;
+}
+function removeTreesOf(key) {
+  for (let i = 0; i < treeCount; i++) {
+    if (treeOwner[i] === key) {
+      trunkMesh.setMatrixAt(i, ZERO_TM); folMesh.setMatrixAt(i, ZERO_TM); treeOwner[i] = null;
+    }
+  }
+  trunkMesh.instanceMatrix.needsUpdate = true; folMesh.instanceMatrix.needsUpdate = true;
+}
+
+function createBuildingMesh(type, x, z) {
+  const bt = BUILD_TYPES[type];
+  const h = bt.hMin + Math.random() * (bt.hMax - bt.hMin);
+  const w = type === 'house' ? 5.5 + Math.random() * 1.5 : 6.5 + Math.random();
+  const d = type === 'house' ? 5.5 + Math.random() * 1.5 : 6.5 + Math.random();
+  const mats = facadeMats(type, bt.floors + Math.floor(h / 8));
+  const mat = mats[Math.floor(Math.random() * mats.length)];
+  const sides = [mat, mat, roofMat, roofMat, mat, mat];
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), sides);
+  mesh.position.set(x, h / 2, z);
+  mesh.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
+  if (CFG.shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
+  // little roof detail for houses
+  if (type === 'house') {
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.72, 1.8, 4), new THREE.MeshLambertMaterial({ color: 0x8a4a3a }));
+    roof.position.y = h / 2 + 0.9;
+    roof.rotation.y = Math.PI / 4;
+    mesh.add(roof);
+  } else if (type === 'office' && Math.random() < 0.6) {
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 4), roofMat);
+    ant.position.y = h / 2 + 2;
+    mesh.add(ant);
+  }
+  mesh.userData = { type, h };
+  return mesh;
+}
+
+function placeBuilding(type, key, silent) {
+  if (state.plots.has(key)) return false;
+  const { x, z } = plotPos(key);
+  if (type === 'park') {
+    const rec = { type, trees: true };
+    for (let t = 0; t < 5; t++) {
+      const tx = x + (Math.random() - 0.5) * 5.5, tz = z + (Math.random() - 0.5) * 5.5;
+      makeTree(tx, tz, 0.8 + Math.random() * 0.5, key);
+    }
+    const lawn = new THREE.Mesh(new THREE.BoxGeometry(CFG.plotSize - 0.4, 0.24, CFG.plotSize - 0.4), new THREE.MeshLambertMaterial({ color: 0x5f9c4e }));
+    lawn.position.set(x, 0.13, z);
+    buildGroup.add(lawn);
+    rec.mesh = lawn;
+    state.plots.set(key, rec);
+    return true;
+  }
+  const mesh = createBuildingMesh(type, x, z);
+  buildGroup.add(mesh);
+  const bt = BUILD_TYPES[type];
+  state.plots.set(key, { type, mesh, pop: bt.pop, jobs: bt.jobs });
+  if (!silent) recalcStats();
+  return true;
+}
+
+function removeBuilding(key) {
+  const rec = state.plots.get(key);
+  if (!rec) return false;
+  if (rec.mesh) { buildGroup.remove(rec.mesh); }
+  if (rec.trees) removeTreesOf(key);
+  state.plots.delete(key);
+  recalcStats();
+  return true;
+}
+
+function recalcStats() {
+  let pop = 0, jobs = 0;
+  for (const rec of state.plots.values()) { pop += rec.pop || 0; jobs += rec.jobs || 0; }
+  state.population = pop;
+  state.jobs = jobs;
+  document.getElementById('popTxt').textContent = pop;
+  document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+}
+
+// street lamps (instanced: 2 draw calls total)
+const lampHeadMat = new THREE.MeshBasicMaterial({ color: 0x555a60 });
+function makeLamps() {
+  const spots = [];
+  for (let k = 0; k <= CFG.blocks; k++) {
+    const line = -HALF + k * CFG.pitch;
+    const off = CFG.roadW / 2 + 1.1;
+    for (let i = 0; i < CFG.blocks; i++) {
+      for (const zz of [blockCenter(i) - 8, blockCenter(i) + 8]) {
+        spots.push([line + off, zz]);
+        spots.push([zz, line + off]);
+      }
+    }
+  }
+  const poleG = new THREE.CylinderGeometry(0.09, 0.12, 5, 5); poleG.translate(0, 2.5, 0);
+  const headG = new THREE.SphereGeometry(0.32, 6, 5); headG.translate(0, 5.05, 0);
+  const poles = new THREE.InstancedMesh(poleG, new THREE.MeshLambertMaterial({ color: 0x3a3f46 }), spots.length);
+  const heads = new THREE.InstancedMesh(headG, lampHeadMat, spots.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
+  spots.forEach(([x, z], i) => { v.set(x, 0, z); m.compose(v, q, s); poles.setMatrixAt(i, m); heads.setMatrixAt(i, m); });
+  scene.add(poles, heads);
+}
+makeLamps();
+
+// ============================== Citizens ==============================
+const personGeo = (() => {
+  const g1 = new THREE.CylinderGeometry(0.22, 0.3, 0.95, 6); g1.translate(0, 0.475, 0);
+  const g2 = new THREE.SphereGeometry(0.21, 6, 5); g2.translate(0, 1.13, 0);
+  const merged = mergeGeos([g1, g2]);
+  return merged;
+})();
+function mergeGeos(geos) {
+  // minimal non-indexed merge (r128 compatible)
+  let total = 0;
+  const nonIndexed = geos.map(g => g.toNonIndexed());
+  for (const g of nonIndexed) total += g.attributes.position.count;
+  const pos = new Float32Array(total * 3), norm = new Float32Array(total * 3);
+  let o = 0;
+  for (const g of nonIndexed) {
+    pos.set(g.attributes.position.array, o * 3);
+    norm.set(g.attributes.normal.array, o * 3);
+    o += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  return out;
+}
+const personMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+let citizensMesh = null;
+const citizens = [];
+
+const carGeo = (() => {
+  const body = new THREE.BoxGeometry(2.2, 0.65, 1.05); body.translate(0, 0.45, 0);
+  const cab = new THREE.BoxGeometry(1.15, 0.55, 0.95); cab.translate(-0.1, 1.0, 0);
+  return mergeGeos([body, cab]);
+})();
+const carMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+let carsMesh = null;
+const cars = [];
+
+const CAR_COLORS = [0xd43a2f, 0x2f6fed, 0xf0f0f0, 0x222831, 0xf2b02e, 0x3fae5a, 0x8a4ad4, 0xd4822f];
+const SKIN_CLOTH = [0xd4a017, 0x2f6fed, 0xc23a3a, 0x3fae5a, 0xe8e0d0, 0x7a4ad4, 0x2fa8a0, 0xd46a9a, 0x885a2a, 0x445];
+
+function sidewalkPoint(key) {
+  // point on road edge nearest to plot center
+  const { x, z } = plotPos(key);
+  return nearestRoadPoint(x, z);
+}
+function nearestRoadPoint(x, z) {
+  // snap to nearest road line in x or z
+  const kx = Math.round((x + HALF) / CFG.pitch);
+  const kz = Math.round((z + HALF) / CFG.pitch);
+  const rx = -HALF + kx * CFG.pitch, rz = -HALF + kz * CFG.pitch;
+  const off = CFG.roadW / 2 + 0.9;
+  if (Math.abs(x - rx) < Math.abs(z - rz)) return { x: rx + (z > rz ? 0 : 0), z: z, vertical: true, rx: rx + off * (Math.random() < 0.5 ? 1 : -1) };
+  return { x: x, z: rz, vertical: false, rz: rz + off * (Math.random() < 0.5 ? 1 : -1) };
+}
+
+function makePath(fromKey, toKey) {
+  // Manhattan path along sidewalk grid lines (offset from road centers)
+  const a = plotPos(fromKey), b = plotPos(toKey);
+  const off = CFG.roadW / 2 + 0.9;
+  const ka = { i: Math.round((a.x + HALF) / CFG.pitch), j: Math.round((a.z + HALF) / CFG.pitch) };
+  const kb = { i: Math.round((b.x + HALF) / CFG.pitch), j: Math.round((b.z + HALF) / CFG.pitch) };
+  const lineX = (i) => -HALF + i * CFG.pitch + off;
+  const lineZ = (j) => -HALF + j * CFG.pitch + off;
+  const startX = lineX(Math.max(0, Math.min(CFG.blocks, ka.i)));
+  const startZ = lineZ(Math.max(0, Math.min(CFG.blocks, ka.j)));
+  const endX = lineX(Math.max(0, Math.min(CFG.blocks, kb.i)));
+  const endZ = lineZ(Math.max(0, Math.min(CFG.blocks, kb.j)));
+  const pts = [];
+  pts.push({ x: a.x, z: a.z });
+  // go to nearest sidewalk corner
+  pts.push({ x: startX, z: a.z });
+  pts.push({ x: startX, z: startZ });
+  pts.push({ x: endX, z: startZ });
+  pts.push({ x: endX, z: endZ });
+  pts.push({ x: b.x, z: endZ });
+  pts.push({ x: b.x, z: b.z });
+  return pts;
+}
+
+function newCitizen(id) {
+  const homeKeys = [], workKeys = [], shopKeys = [];
+  for (const [key, rec] of state.plots) {
+    if (rec.type === 'house') homeKeys.push(key);
+    else if (rec.type === 'office') workKeys.push(key);
+    else if (rec.type === 'shop') shopKeys.push(key);
+  }
+  const allKeys = plotKeys();
+  const pick = (arr, fallback) => arr.length ? arr[Math.floor(Math.random() * arr.length)] : fallback[Math.floor(Math.random() * fallback.length)];
+  return {
+    id,
+    name: AR_NAMES[Math.floor(Math.random() * AR_NAMES.length)],
+    job: JOBS[Math.floor(Math.random() * JOBS.length)],
+    home: pick(homeKeys, allKeys),
+    work: pick(workKeys.concat(shopKeys), allKeys),
+    state: 'home',       // home | walk | work | out
+    path: null, seg: 0, segT: 0,
+    speed: 1.6 + Math.random() * 0.7,
+    x: 0, z: 0, visible: false,
+    color: SKIN_CLOTH[id % SKIN_CLOTH.length],
+  };
+}
+
+function citizenStartTrip(cz, destKey, nextState) {
+  cz.path = makePath(cz.stateFromKey || cz.home, destKey);
+  cz.seg = 0; cz.segT = 0;
+  cz.state = 'walk'; cz.nextState = nextState;
+  cz.stateFromKey = destKey;
+  cz.visible = true;
+  cz.x = cz.path[0].x; cz.z = cz.path[0].z;
+}
+
+function updateCitizens(dtGameHours, dtReal) {
+  const h = state.hour;
+  for (const cz of citizens) {
+    // schedule decisions
+    if (cz.state === 'home' && h >= 6.5 && h < 8.5 && Math.random() < dtGameHours * 2.5) {
+      citizenStartTrip(cz, cz.work, 'work');
+    } else if (cz.state === 'work' && h >= 16.5 && h < 19 && Math.random() < dtGameHours * 2.5) {
+      const leisure = state.plots.size && Math.random() < 0.4 ? 'out' : 'home';
+      let dest = cz.home;
+      if (leisure === 'out') {
+        const fun = [];
+        for (const [k, r] of state.plots) if (r.type === 'park' || r.type === 'shop') fun.push(k);
+        if (fun.length) dest = fun[Math.floor(Math.random() * fun.length)];
+      }
+      citizenStartTrip(cz, dest, leisure === 'out' && dest !== cz.home ? 'out' : 'home');
+    } else if (cz.state === 'out' && h >= 20.5 && Math.random() < dtGameHours * 3) {
+      citizenStartTrip(cz, cz.home, 'home');
+    }
+    // movement
+    if (cz.state === 'walk' && cz.path) {
+      let remain = cz.speed * dtReal * 3.2;
+      while (remain > 0 && cz.seg < cz.path.length - 1) {
+        const a = cz.path[cz.seg], b = cz.path[cz.seg + 1];
+        const dx = b.x - a.x, dz = b.z - a.z;
+        const len = Math.hypot(dx, dz) || 0.001;
+        const left = len * (1 - cz.segT);
+        if (remain >= left) { remain -= left; cz.seg++; cz.segT = 0; }
+        else { cz.segT += remain / len; remain = 0; }
+        const t = cz.segT;
+        cz.x = a.x + dx * t; cz.z = a.z + dz * t;
+      }
+      if (cz.seg >= cz.path.length - 1) {
+        cz.state = cz.nextState; cz.visible = false; cz.path = null;
+      }
+    }
+  }
+}
+
+function buildCitizenInstances() {
+  if (citizensMesh) { scene.remove(citizensMesh); citizensMesh.geometry.dispose(); }
+  citizensMesh = new THREE.InstancedMesh(personGeo, personMat, citizens.length);
+  citizensMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const col = new THREE.Color();
+  for (let i = 0; i < citizens.length; i++) {
+    citizensMesh.setColorAt(i, col.setHex(citizens[i].color));
+  }
+  scene.add(citizensMesh);
+}
+
+const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
+const ZERO_M = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
+function renderCitizens() {
+  if (!citizensMesh) return;
+  for (let i = 0; i < citizens.length; i++) {
+    const cz = citizens[i];
+    if (!cz.visible) { citizensMesh.setMatrixAt(i, ZERO_M); continue; }
+    _v.set(cz.x, 0, cz.z); _s.set(1, 1, 1); _q.identity();
+    _m4.compose(_v, _q, _s);
+    citizensMesh.setMatrixAt(i, _m4);
+  }
+  citizensMesh.instanceMatrix.needsUpdate = true;
+}
+
+// ============================== Cars ==============================
+function newCar(id) {
+  const dir = Math.random() < 0.5 ? 'x' : 'z';
+  const k = 1 + Math.floor(Math.random() * (CFG.blocks - 1));
+  const line = -HALF + k * CFG.pitch;
+  return {
+    id, dir, line,
+    pos: -HALF + Math.random() * HALF * 2,
+    heading: Math.random() < 0.5 ? 1 : -1,
+    speed: 7 + Math.random() * 5,
+    color: CAR_COLORS[id % CAR_COLORS.length],
+    wait: 0,
+  };
+}
+function updateCars(dtReal) {
+  const rush = (state.hour >= 7 && state.hour < 9.5) || (state.hour >= 16.5 && state.hour < 19.5);
+  for (const car of cars) {
+    car.targetActive = rush ? true : (car.id % 3 !== 0); // fewer cars off-peak
+    if (car.wait > 0) { car.wait -= dtReal; continue; }
+    car.pos += car.heading * car.speed * dtReal;
+    // intersection stop chance
+    const rel = car.pos + HALF;
+    const nearInt = Math.abs(rel / CFG.pitch - Math.round(rel / CFG.pitch)) * CFG.pitch;
+    if (nearInt < 1.2 && Math.random() < 0.02) car.wait = 1 + Math.random() * 2;
+    if (car.pos > HALF + 4) { car.pos = -HALF - 4; car.line = -HALF + (1 + Math.floor(Math.random() * (CFG.blocks - 1))) * CFG.pitch; }
+    if (car.pos < -HALF - 4) { car.pos = HALF + 4; car.line = -HALF + (1 + Math.floor(Math.random() * (CFG.blocks - 1))) * CFG.pitch; }
+  }
+}
+function buildCarInstances() {
+  if (carsMesh) { scene.remove(carsMesh); carsMesh.geometry.dispose(); }
+  carsMesh = new THREE.InstancedMesh(carGeo, carMat, cars.length);
+  carsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const col = new THREE.Color();
+  for (let i = 0; i < cars.length; i++) carsMesh.setColorAt(i, col.setHex(cars[i].color));
+  scene.add(carsMesh);
+}
+function renderCars() {
+  if (!carsMesh) return;
+  const laneOff = 1.9;
+  for (let i = 0; i < cars.length; i++) {
+    const car = cars[i];
+    if (car.targetActive === false) { carsMesh.setMatrixAt(i, ZERO_M); continue; }
+    const x = car.dir === 'x' ? car.pos : car.line + laneOff * car.heading;
+    const z = car.dir === 'x' ? car.line + laneOff * car.heading : car.pos;
+    _v.set(x, 0.1, z);
+    _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), car.dir === 'x' ? (car.heading > 0 ? 0 : Math.PI) : (car.heading > 0 ? -Math.PI / 2 : Math.PI / 2));
+    _s.set(1, 1, 1);
+    _m4.compose(_v, _q, _s);
+    carsMesh.setMatrixAt(i, _m4);
+  }
+  carsMesh.instanceMatrix.needsUpdate = true;
+}
+
+// ============================== Sky / day-night ==============================
+const SKY = {
+  night:  { sky: new THREE.Color(0x0a1024), fog: new THREE.Color(0x0a1024), hemi: 0.12, sun: 0.0,  sunC: 0x223 },
+  dawn:   { sky: new THREE.Color(0xe8a06a), fog: new THREE.Color(0xd8a07a), hemi: 0.45, sun: 0.55, sunC: 0xffd0a0 },
+  day:    { sky: new THREE.Color(0x87b5e0), fog: new THREE.Color(0xa8c8e8), hemi: 0.75, sun: 1.05, sunC: 0xffffff },
+  dusk:   { sky: new THREE.Color(0xd4785a), fog: new THREE.Color(0xc07868), hemi: 0.4,  sun: 0.4,  sunC: 0xffb080 },
+};
+function lerpSky(a, b, t) {
+  return {
+    sky: a.sky.clone().lerp(b.sky, t),
+    fog: a.fog.clone().lerp(b.fog, t),
+    hemi: a.hemi + (b.hemi - a.hemi) * t,
+    sun: a.sun + (b.sun - a.sun) * t,
+  };
+}
+function skyFor(h) {
+  if (h < 4.5 || h >= 21) return SKY.night;
+  if (h < 6.5) return lerpSky(SKY.night, SKY.dawn, (h - 4.5) / 2);
+  if (h < 8) return lerpSky(SKY.dawn, SKY.day, (h - 6.5) / 1.5);
+  if (h < 16.5) return SKY.day;
+  if (h < 18.5) return lerpSky(SKY.day, SKY.dusk, (h - 16.5) / 2);
+  if (h < 21) return lerpSky(SKY.dusk, SKY.night, (h - 18.5) / 2.5);
+  return SKY.night;
+}
+
+const WEATHERS = { sunny: 'مشمس', cloudy: 'غائم', rain: 'ممطر' };
+const WEATHER_ICONS = { sunny: '☀️', cloudy: '☁️', rain: '🌧️' };
+
+// rain particles
+const RAIN_N = IS_MOBILE ? 900 : 2200;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(RAIN_N * 3);
+for (let i = 0; i < RAIN_N; i++) {
+  rainPos[i * 3] = (Math.random() - 0.5) * 220;
+  rainPos[i * 3 + 1] = Math.random() * 60;
+  rainPos[i * 3 + 2] = (Math.random() - 0.5) * 220;
+}
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainMat = new THREE.PointsMaterial({ color: 0x9ab8d8, size: 0.35, transparent: true, opacity: 0.65 });
+const rain = new THREE.Points(rainGeo, rainMat);
+rain.visible = false;
+scene.add(rain);
+
+// clouds
+const cloudGroup = new THREE.Group(); scene.add(cloudGroup);
+{
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64, 64, 8, 64, 64, 62);
+  grd.addColorStop(0, 'rgba(255,255,255,0.85)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  const ctex = new THREE.CanvasTexture(c);
+  for (let i = 0; i < 10; i++) {
+    const sm = new THREE.SpriteMaterial({ map: ctex, transparent: true, opacity: 0.0, depthWrite: false });
+    const sp = new THREE.Sprite(sm);
+    sp.scale.set(50 + Math.random() * 45, 18 + Math.random() * 12, 1);
+    sp.position.set((Math.random() - 0.5) * 300, 68 + Math.random() * 22, (Math.random() - 0.5) * 300);
+    sp.userData.vx = 0.6 + Math.random() * 0.8;
+    cloudGroup.add(sp);
+  }
+}
+
+function setWeather(w) {
+  state.weather = w;
+  state.weatherT = 0;
+  document.getElementById('weatherTxt').textContent = WEATHERS[w];
+  document.getElementById('weatherPill').firstChild.textContent = WEATHER_ICONS[w] + ' ';
+  rain.visible = (w === 'rain');
+}
+
+function updateWeather(dtGameHours, dtReal) {
+  state.weatherT += dtGameHours;
+  if (state.weatherT > 3 + Math.random() * 3) {
+    const r = Math.random();
+    setWeather(r < 0.5 ? 'sunny' : r < 0.8 ? 'cloudy' : 'rain');
+  }
+  const cloudy = state.weather !== 'sunny';
+  for (const sp of cloudGroup.children) {
+    sp.material.opacity += ((cloudy ? (state.weather === 'rain' ? 0.85 : 0.6) : 0) - sp.material.opacity) * dtReal * 0.5;
+    sp.position.x += sp.userData.vx * dtReal;
+    if (sp.position.x > 190) sp.position.x = -190;
+  }
+  if (rain.visible) {
+    const arr = rain.geometry.attributes.position.array;
+    for (let i = 0; i < RAIN_N; i++) {
+      arr[i * 3 + 1] -= 42 * dtReal;
+      if (arr[i * 3 + 1] < 0) arr[i * 3 + 1] = 60;
+    }
+    rain.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
+function updateLighting() {
+  const s = skyFor(state.hour);
+  const dim = state.weather === 'rain' ? 0.55 : state.weather === 'cloudy' ? 0.78 : 1;
+  scene.background.copy(s.sky).multiplyScalar(dim);
+  scene.fog.color.copy(s.fog).multiplyScalar(dim);
+  hemi.intensity = s.hemi * dim;
+  const isNight = s.sun < 0.06;
+  sun.intensity = s.sun * dim;
+  if (!isNight) {
+    const t = (state.hour - 6) / 13; // 6h..19h
+    const ang = Math.PI * Math.max(0.03, Math.min(0.97, t));
+    sun.position.set(Math.cos(ang) * 140, Math.sin(ang) * 130 + 12, 60);
+    sun.color.set(0xffffff);
+  }
+  moonLight.intensity = isNight ? 0.16 : 0;
+  // windows + lamps at night
+  const glow = state.hour >= 18.2 || state.hour < 5.8 ? 1 : 0;
+  for (const k in facadeCache) for (const m of facadeCache[k]) {
+    m.emissiveIntensity += ((glow ? 0.85 : 0) - m.emissiveIntensity) * 0.06;
+  }
+  lampHeadMat.color.setHex(glow ? 0xffd57a : 0x555a60);
+}
+
+// ============================== Economy ==============================
+let dayAcc = 0;
+function updateEconomy(dtGameHours) {
+  dayAcc += dtGameHours;
+  if (dayAcc >= 24) {
+    dayAcc -= 24;
+    state.day++;
+    const income = state.population * 3 + state.jobs * 2;
+    state.money += income;
+    toast(`💰 دخل اليوم: ${income} جنيه — يوم ${state.day}`);
+    document.getElementById('dayTxt').textContent = 'يوم ' + state.day;
+    document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+  }
+}
+
+// ============================== Interaction ==============================
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let downPos = null;
+
+function pickAt(cx, cy) {
+  pointer.x = (cx / innerWidth) * 2 - 1;
+  pointer.y = -(cy / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  // buildings first
+  const bHits = raycaster.intersectObjects(buildGroup.children, true);
+  if (bHits.length) {
+    let o = bHits[0].object;
+    while (o && !o.userData.type && o.parent) o = o.parent;
+    if (o && o.userData.type) return { kind: 'building', object: o, point: bHits[0].point };
+    if (bHits[0].object.userData.isLawn) return { kind: 'lawn', point: bHits[0].point };
+  }
+  // citizens
+  if (citizensMesh) {
+    const cHits = raycaster.intersectObject(citizensMesh);
+    if (cHits.length && cHits[0].instanceId !== undefined) {
+      const cz = citizens[cHits[0].instanceId];
+      if (cz && cz.visible) return { kind: 'citizen', citizen: cz };
+    }
+  }
+  // plots
+  const pHits = raycaster.intersectObjects(plotMeshes);
+  if (pHits.length) return { kind: 'plot', key: plotIndex.get(pHits[0].object), point: pHits[0].point };
+  return null;
+}
+
+function toast(msg, ms) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(() => t.style.display = 'none', ms || 2600);
+}
+
+function showInfo(hit) {
+  const card = document.getElementById('infoCard');
+  const rows = document.getElementById('infoRows');
+  if (hit.kind === 'citizen') {
+    const cz = hit.citizen;
+    document.getElementById('infoTitle').textContent = '👤 ' + cz.name;
+    const stTxt = { home: 'في البيت', walk: 'ماشي في الشارع', work: 'في الشغل', out: 'بيتفسح' }[cz.state];
+    rows.innerHTML =
+      row('الشغلانة', cz.job) + row('الحالة دلوقتي', stTxt) +
+      row('سرعة المشي', cz.speed.toFixed(1));
+  } else if (hit.kind === 'building') {
+    const bt = BUILD_TYPES[hit.object.userData.type];
+    document.getElementById('infoTitle').textContent = (hit.object.userData.type === 'house' ? '🏠 ' : hit.object.userData.type === 'shop' ? '🏪 ' : '🏢 ') + bt.label;
+    rows.innerHTML =
+      row('السكان', bt.pop) + row('فرص الشغل', bt.jobs) +
+      row('الارتفاع', Math.round(hit.object.userData.h) + ' متر');
+  } else return;
+  card.style.display = 'block';
+  function row(a, b) { return '<div class="row"><span>' + a + '</span><span>' + b + '</span></div>'; }
+}
+document.getElementById('infoClose').onclick = () => document.getElementById('infoCard').style.display = 'none';
+
+function onTap(cx, cy) {
+  const hit = pickAt(cx, cy);
+  if (!hit) { document.getElementById('infoCard').style.display = 'none'; return; }
+  if (state.tool === 'bulldoze') {
+    if (hit.kind === 'plot' && state.plots.has(hit.key)) {
+      const rec = state.plots.get(hit.key);
+      const refund = Math.floor((COSTS[rec.type] || 0) * 0.5);
+      removeBuilding(hit.key);
+      state.money += refund;
+      recalcStats();
+      toast('🚜 اتهدم واسترجعت ' + refund + ' جنيه');
+    } else if (hit.kind === 'building') {
+      // find key by position
+      for (const [k, rec] of state.plots) {
+        if (rec.mesh === hit.object) {
+          const refund = Math.floor((COSTS[rec.type] || 0) * 0.5);
+          removeBuilding(k); state.money += refund; recalcStats();
+          toast('🚜 اتهدم واسترجعت ' + refund + ' جنيه');
+          break;
+        }
+      }
+    } else toast('دوس على مبنى أو قطعة أرض علشان تهدم');
+    return;
+  }
+  if (state.tool && hit.kind === 'plot') {
+    if (state.plots.has(hit.key)) { toast('الأرض دي مشغولة — اختار أرض فاضية'); return; }
+    const cost = COSTS[state.tool];
+    if (state.money < cost) { toast('مش معاك فلوس كفاية! محتاج ' + cost + ' 💰'); return; }
+    state.money -= cost;
+    placeBuilding(state.tool, hit.key);
+    recalcStats();
+    toast('✅ اتبنى! باقي معاك ' + Math.floor(state.money) + ' 💰');
+    return;
+  }
+  if (hit.kind === 'building' || hit.kind === 'citizen') showInfo(hit);
+  else document.getElementById('infoCard').style.display = 'none';
+}
+
+renderer.domElement.addEventListener('pointerdown', e => { downPos = { x: e.clientX, y: e.clientY, t: Date.now() }; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downPos) return;
+  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+  if (moved < 8 && Date.now() - downPos.t < 500) onTap(e.clientX, e.clientY);
+  downPos = null;
+});
+
+// toolbar
+for (const el of document.querySelectorAll('.tool')) {
+  el.addEventListener('click', () => {
+    const t = el.dataset.tool;
+    if (state.tool === t) { state.tool = null; el.classList.remove('on'); return; }
+    state.tool = t;
+    document.querySelectorAll('.tool').forEach(x => x.classList.toggle('on', x === el));
+    toast(t === 'bulldoze' ? '🚜 وضع الهدم: دوس على مبنى' : '🏗️ دوس على أرض فاضية للبناء');
+  });
+}
+
+// speed
+function setSpeed(s) {
+  state.speed = s;
+  for (const [id, v] of [['spd0', 0], ['spd1', 1], ['spd4', 4]])
+    document.getElementById(id).classList.toggle('on', v === s);
+}
+document.getElementById('spd0').onclick = () => setSpeed(0);
+document.getElementById('spd1').onclick = () => setSpeed(1);
+document.getElementById('spd4').onclick = () => setSpeed(4);
+document.getElementById('camBtn').onclick = () => {
+  camera.position.set(90, 85, 90); controls.target.set(0, 0, 0);
+};
+document.getElementById('weatherBtn').onclick = () => {
+  const order = ['sunny', 'cloudy', 'rain'];
+  setWeather(order[(order.indexOf(state.weather) + 1) % 3]);
+  toast(WEATHER_ICONS[state.weather] + ' الطقس بقى ' + WEATHERS[state.weather]);
+};
+document.getElementById('helpBtn').onclick = () => document.getElementById('helpOverlay').style.display = 'flex';
+document.getElementById('startBtn').onclick = () => { document.getElementById('helpOverlay').style.display = 'none'; saveGame(); };
+
+// ============================== Save / Load ==============================
+const SAVE_KEY = 'livingCityV3';
+function saveGame() {
+  const data = {
+    money: state.money, day: state.day, hour: state.hour,
+    weather: state.weather,
+    plots: [...state.plots.entries()].map(([k, r]) => [k, r.type]),
+  };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) {}
+}
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    state.money = data.money; state.day = data.day; state.hour = data.hour;
+    setWeather(data.weather || 'sunny');
+    for (const [k, type] of data.plots) placeBuilding(type, k, true);
+    recalcStats();
+    return true;
+  } catch (e) { return false; }
+}
+setInterval(saveGame, 12000);
+
+// ============================== Seed city ==============================
+function seedCity() {
+  if (loadGame()) { document.getElementById('dayTxt').textContent = 'يوم ' + state.day; return; }
+  const rng = () => Math.random();
+  for (let i = 0; i < CFG.blocks; i++) for (let j = 0; j < CFG.blocks; j++) {
+    for (let p = 0; p < 4; p++) {
+      const key = i + ',' + j + ',' + p;
+      const centerDist = Math.hypot(i - CFG.blocks / 2 + 0.5, j - CFG.blocks / 2 + 0.5) / (CFG.blocks / 2);
+      const r = rng();
+      if (r < 0.16) continue; // empty lot
+      let type;
+      if (centerDist < 0.45) type = r < 0.55 ? 'office' : (r < 0.8 ? 'shop' : 'house');
+      else type = r < 0.55 ? 'house' : (r < 0.75 ? 'shop' : (r < 0.88 ? 'office' : 'park'));
+      placeBuilding(type, key, true);
+    }
+  }
+  recalcStats();
+}
+seedCity();
+
+// citizens init after city exists
+for (let i = 0; i < CFG.citizens; i++) citizens.push(newCitizen(i));
+buildCitizenInstances();
+for (let i = 0; i < CFG.cars; i++) cars.push(newCar(i));
+buildCarInstances();
+
+// ============================== Main loop ==============================
+const clock = new THREE.Clock();
+let frames = 0, fpsT = 0;
+window.__city = { state, citizens, cars, CFG, camera, fps: 0,
+  freePlotScreenPos() {
+    for (const key of plotKeys()) {
+      if (state.plots.has(key)) continue;
+      const { x, z } = plotPos(key);
+      const v = new THREE.Vector3(x, 0, z).project(camera);
+      if (Math.abs(v.x) < 0.85 && Math.abs(v.y) < 0.8 && v.z < 1) {
+        return { key, sx: (v.x * 0.5 + 0.5) * innerWidth, sy: (-v.y * 0.5 + 0.5) * innerHeight };
+      }
+    }
+    return null;
+  }
+};
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dtReal = Math.min(clock.getDelta(), 0.1);
+  const dtGameHours = dtReal * CFG.gameHoursPerRealSec * state.speed;
+
+  if (state.speed > 0) {
+    state.hour += dtGameHours;
+    if (state.hour >= 24) state.hour -= 24;
+    updateCitizens(dtGameHours, dtReal * state.speed);
+    updateCars(dtReal * state.speed);
+    updateWeather(dtGameHours, dtReal);
+    updateEconomy(dtGameHours);
+  }
+  updateLighting();
+  renderCitizens();
+  renderCars();
+
+  // clock display
+  const hh = Math.floor(state.hour), mm = Math.floor((state.hour - hh) * 60);
+  document.getElementById('clockTxt').textContent = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  frames++; fpsT += dtReal;
+  if (fpsT >= 2) { window.__city.fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+document.getElementById('loading').style.display = 'none';
+animate();
+</script>
+</body>
+</html>
