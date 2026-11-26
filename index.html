@@ -398,6 +398,51 @@ function shopSignMaterials(idx) {
   return mats;
 }
 
+// R18: rooftop advertising billboards with Arabic ads
+const BILLBOARD_DEFS = [
+  { line1: 'مشروب غازي', line2: 'انتعاش بلا حدود', bg: '#c2272d', fg: '#ffffff' },
+  { line1: 'أقوى نت في مصر', line2: 'اشترك دلوقتي', bg: '#5b2d90', fg: '#ffffff' },
+  { line1: 'عقارات المستقبل', line2: 'امتلك شقتك بالتقسيط', bg: '#0d5fa8', fg: '#ffe9a8' },
+  { line1: 'بنك الأهلي', line2: 'معاك في كل خطوة', bg: '#1f7a3d', fg: '#ffffff' },
+  { line1: 'مكرونة الملكة', line2: 'الطعم الأصلي', bg: '#e0a91c', fg: '#4a1f05' },
+  { line1: 'قهوة بن الضيافة', line2: 'من ١٩٥٢', bg: '#3a2415', fg: '#f5e0b8' }
+];
+const billboardTexCache = [];
+function billboardMaterials(idx) {
+  if (billboardTexCache[idx]) return billboardTexCache[idx];
+  const def = BILLBOARD_DEFS[idx];
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 192;
+  const g = cv.getContext('2d');
+  g.fillStyle = def.bg; g.fillRect(0, 0, 512, 192);
+  g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 8; g.strokeRect(6, 6, 500, 180);
+  g.fillStyle = def.fg; g.textAlign = 'center';
+  g.font = 'bold 64px sans-serif'; g.textBaseline = 'middle';
+  g.fillText(def.line1, 256, 66);
+  g.font = 'bold 36px sans-serif';
+  g.fillText(def.line2, 256, 136);
+  const tex = new THREE.CanvasTexture(cv);
+  const lit = new THREE.MeshBasicMaterial({ map: tex });
+  billboardTexCache[idx] = lit;
+  return lit;
+}
+const billboardFrameMat = new THREE.MeshLambertMaterial({ color: 0x3a3f45 });
+function makeBillboard(mesh, w, d, h) {
+  const grp = new THREE.Group();
+  const bw = Math.min(w * 0.95, 7.5), bh = bw * 0.375;
+  const lit = billboardMaterials(Math.abs(Math.floor(mesh.position.x * 3 + mesh.position.z * 5)) % BILLBOARD_DEFS.length);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.12), [
+    billboardFrameMat, billboardFrameMat, billboardFrameMat, billboardFrameMat, lit, lit
+  ]);
+  panel.position.y = bh / 2 + 0.8;
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.9, 0.14), billboardFrameMat);
+  legL.position.set(-bw / 2 + 0.3, 0.45, 0);
+  const legR = legL.clone(); legR.position.x = bw / 2 - 0.3;
+  grp.add(panel, legL, legR);
+  grp.position.y = h / 2 + 0.05;
+  mesh.add(grp);
+}
+
 const BUILD_TYPES = {
   house:  { hMin: 3.2, hMax: 5.5, floors: 2, pop: 4, jobs: 0, label: 'بيت' },
   shop:   { hMin: 5,   hMax: 8,  floors: 3, pop: 1, jobs: 4, label: 'محل تجاري' },
@@ -489,6 +534,8 @@ function createBuildingMesh(type, x, z) {
     roof.position.y = h / 2 + 0.9;
     roof.rotation.y = Math.PI / 4;
     mesh.add(roof);
+  } else if (type === 'office' && Math.random() < 0.35 && h > 14) {
+    makeBillboard(mesh, w, d, h);
   } else if (type === 'office' && Math.random() < 0.6) {
     const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 4), roofMat);
     ant.position.y = h / 2 + 2;
