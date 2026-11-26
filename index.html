@@ -5696,6 +5696,168 @@ function updateBookFair(dtReal) {
 }
 initBookFair();
 
+// R72: zoo corner (ركن حديقة الحيوان) in Nakheel — lion cage, monkey tree, elephant pen, family visitors by day
+let zooCorner = null;
+function initZooCorner() {
+  if (zooCorner) return;
+  const ZX = 128, ZZ = 71;
+  const grp = new THREE.Group();
+  // sandy ground
+  const ground = new THREE.Mesh(new THREE.BoxGeometry(22, 0.16, 20), new THREE.MeshLambertMaterial({ color: 0xd8c48f }));
+  ground.position.set(ZX, 0.08, ZZ);
+  grp.add(ground);
+  // low fence around
+  const fenceMat = new THREE.MeshLambertMaterial({ color: 0x6b4f2a });
+  for (let i = 0; i <= 10; i++) {
+    const px = ZX - 11 + i * 2.2;
+    for (const pz of [ZZ - 10, ZZ + 10]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.9, 0.18), fenceMat);
+      post.position.set(px, 0.5, pz);
+      grp.add(post);
+    }
+  }
+  // lion cage with bars
+  const cage = new THREE.Group();
+  const cageFloor = new THREE.Mesh(new THREE.BoxGeometry(7, 0.3, 6), new THREE.MeshLambertMaterial({ color: 0xb8a878 }));
+  cageFloor.position.y = 0.15;
+  cage.add(cageFloor);
+  const barMat = new THREE.MeshLambertMaterial({ color: 0x444a55 });
+  for (let i = 0; i < 9; i++) {
+    for (const bz of [-3, 3]) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 5), barMat);
+      bar.position.set(-3.5 + i * 0.875, 1.5, bz);
+      cage.add(bar);
+    }
+  }
+  const cageRoof = new THREE.Mesh(new THREE.BoxGeometry(7.3, 0.15, 2.6), barMat);
+  cageRoof.position.z = -1.8;
+  cageRoof.position.y = 2.75;
+  cage.add(cageRoof);
+  // lion: body + head + mane
+  const lion = new THREE.Group();
+  const lBody = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 0.7), new THREE.MeshLambertMaterial({ color: 0xe8b85a, emissive: 0x503510 }));
+  lBody.position.y = 0.65;
+  const lMane = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a20 }));
+  lMane.position.set(0.9, 0.9, 0);
+  const lHead = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), new THREE.MeshLambertMaterial({ color: 0xe8b85a, emissive: 0x503510 }));
+  lHead.position.set(1.1, 0.95, 0);
+  lion.add(lBody, lMane, lHead);
+  for (const [lx, lz] of [[-0.55, -0.25], [-0.55, 0.25], [0.55, -0.25], [0.55, 0.25]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.5, 5), new THREE.MeshLambertMaterial({ color: 0xb8893e }));
+    leg.position.set(lx, 0.25, lz);
+    lion.add(leg);
+  }
+  const lTail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.9, 5), new THREE.MeshLambertMaterial({ color: 0xb8893e }));
+  lTail.position.set(-0.95, 0.75, 0);
+  lTail.rotation.z = 0.7;
+  lion.add(lTail);
+  lion.scale.set(1.35, 1.35, 1.35);
+  cage.add(lion);
+  cage.position.set(ZX - 6, 0.16, ZZ - 5.5);
+  grp.add(cage);
+  // monkey tree with jumping monkeys
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 3.4, 7), new THREE.MeshLambertMaterial({ color: 0x6b4f2a }));
+  trunk.position.set(ZX + 5.5, 1.7, ZZ - 5);
+  grp.add(trunk);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.1, 8, 7), new THREE.MeshLambertMaterial({ color: 0x3f7a35 }));
+  canopy.position.set(ZX + 5.5, 4.1, ZZ - 5);
+  grp.add(canopy);
+  const monkeys = [];
+  for (let i = 0; i < 3; i++) {
+    const mk = new THREE.Group();
+    const mb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 7, 7), new THREE.MeshLambertMaterial({ color: 0x7a5a35 }));
+    mb.scale.set(1, 1.15, 1);
+    const mh = new THREE.Mesh(new THREE.SphereGeometry(0.17, 7, 7), new THREE.MeshLambertMaterial({ color: 0x8a6a45 }));
+    mh.position.y = 0.42;
+    mk.add(mb, mh);
+    mk.userData = { ph: i * 2.1, r: 1.2 + i * 0.35 };
+    grp.add(mk);
+    monkeys.push(mk);
+  }
+  // elephant pen
+  const elephant = new THREE.Group();
+  const eBody = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.3, 1.2), new THREE.MeshLambertMaterial({ color: 0x9a9aa2 }));
+  eBody.position.y = 1.0;
+  const eHead = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 0.9), new THREE.MeshLambertMaterial({ color: 0x9a9aa2 }));
+  eHead.position.set(1.3, 1.2, 0);
+  const eTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 1.0, 6), new THREE.MeshLambertMaterial({ color: 0x8a8a92 }));
+  eTrunk.position.set(1.7, 0.6, 0);
+  elephant.add(eBody, eHead, eTrunk);
+  for (const [lx, lz] of [[-0.7, -0.4], [-0.7, 0.4], [0.7, -0.4], [0.7, 0.4]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.9, 6), new THREE.MeshLambertMaterial({ color: 0x8a8a92 }));
+    leg.position.set(lx, 0.45, lz);
+    elephant.add(leg);
+  }
+  elephant.position.set(ZX + 4.5, 0.16, ZZ + 5.5);
+  grp.add(elephant);
+  // pen rail
+  const rail = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.08, 6, 24), fenceMat);
+  rail.rotation.x = Math.PI / 2;
+  rail.position.set(ZX + 4.5, 0.7, ZZ + 5.5);
+  grp.add(rail);
+  // ticket kiosk + sign facing west (toward Nakheel park)
+  const kiosk = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 2.0), new THREE.MeshLambertMaterial({ color: 0x2f7a4a }));
+  kiosk.position.set(ZX - 9, 1.2, ZZ + 7);
+  grp.add(kiosk);
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 48;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#1e5c38'; g.fillRect(0, 0, 256, 48);
+  g.fillStyle = '#d9f2c0'; g.font = 'bold 28px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('ركن الحيوان 🦁', 128, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 0.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(ZX - 11.2, 2.6, ZZ + 2);
+  sign.rotation.y = -Math.PI / 2;
+  grp.add(sign);
+  scene.add(grp);
+  // day visitors
+  const visitors = [];
+  for (let i = 0; i < 8; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.7, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.4, 0.55) }));
+    shirt.position.y = 0.55;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: [0xc89b6d, 0xa8763e, 0x8a5a2b][i % 3] }));
+    head.position.y = 1.08;
+    p.add(shirt, head);
+    p.userData = { spot: i % 3, ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    visitors.push(p);
+  }
+  zooCorner = { grp, lion, monkeys, elephant, visitors, t: 0, toastedDay: -1, ZX, ZZ };
+}
+function updateZooCorner(dtReal) {
+  if (!zooCorner) return;
+  const z = zooCorner;
+  z.t += dtReal;
+  const h = state.hour;
+  const open = h >= 9 && h < 18;
+  // lion paces
+  z.lion.position.x = Math.sin(z.t * 0.5) * 2.2;
+  z.lion.rotation.y = Math.cos(z.t * 0.5) > 0 ? 0 : Math.PI;
+  // monkeys hop around the canopy
+  for (const mk of z.monkeys) {
+    const u = mk.userData;
+    const a = z.t * 0.9 + u.ph;
+    mk.position.set(z.ZX + 5.5 + Math.cos(a) * u.r, 3.1 + Math.abs(Math.sin(z.t * 2.4 + u.ph)) * 1.1, z.ZZ - 5 + Math.sin(a) * u.r);
+  }
+  // elephant trunk sways
+  z.elephant.children[2].rotation.z = Math.sin(z.t * 1.2) * 0.35;
+  if (open && z.toastedDay !== state.day) {
+    z.toastedDay = state.day;
+    toast('🦁 ركن الحيوان اتفتح في النخيل — رحلة عائلية الصبح!');
+  }
+  const spots = [[z.ZX - 6, z.ZZ - 9], [z.ZX + 5.5, z.ZZ - 8.5], [z.ZX + 4.5, z.ZZ + 1.5]];
+  for (const p of z.visitors) {
+    p.visible = open;
+    if (!open) continue;
+    const u = p.userData;
+    const s = spots[u.spot];
+    p.position.set(s[0] + Math.sin(z.t * 0.4 + u.ph) * 0.9, 0.16, s[1] + Math.cos(z.t * 0.3 + u.ph) * 0.7);
+  }
+}
+initZooCorner();
+
+
 
 
 
@@ -5925,6 +6087,7 @@ function animate() {
   updateCinema(dtReal);
   updateStreetFootball(dtReal);
   updateBookFair(dtReal);
+  updateZooCorner(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
