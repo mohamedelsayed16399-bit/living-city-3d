@@ -1206,6 +1206,9 @@ function initExtraVehicles() {
 
 function updateCars(dtReal) {
   const rush = (state.hour >= 7 && state.hour < 9.5) || (state.hour >= 16.5 && state.hour < 19.5);
+  if (rush && !rushActive) toast('🚗 ساعة الذروة - الشوارع زحمة دلوقتي!');
+  if (!rush && rushActive) toast('😌 الزحمة خفّت والشوارع فاضية تاني');
+  rushActive = rush;
   // ambulance spawns periodically and races through
   if (!ambulance) {
     ambCooldown -= dtReal;
@@ -1223,11 +1226,14 @@ function updateCars(dtReal) {
   updateVehicleList(minibuses, dtReal, true);
   updateVehicleList(toktoks, dtReal, true);
 }
+let rushActive = false;
 function updateVehicleList(list, dtReal, rush) {
   for (const car of list) {
     car.targetActive = rush ? true : (car.id % 3 !== 0); // fewer cars off-peak
     if (car.wait > 0) { car.wait -= dtReal; continue; }
-    if (!carMustStop(car)) car.pos += car.heading * car.speed * dtReal;
+    // R33: rush-hour crawl - bumper to bumper, everyone creeps
+    const v = rush ? car.speed * 0.42 : car.speed;
+    if (!carMustStop(car)) car.pos += car.heading * v * dtReal;
     // occasional pause
     const rel = car.pos + HALF;
     const nearInt = Math.abs(rel / CFG.pitch - Math.round(rel / CFG.pitch)) * CFG.pitch;
