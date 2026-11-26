@@ -1788,6 +1788,50 @@ function updateConvoy(dtReal) {
   }
 }
 
+// R40: dancing Nile fountain — colored light-and-water show every night
+const showFountain = (() => {
+  const grp = new THREE.Group();
+  const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.6, 0.6, 20), new THREE.MeshLambertMaterial({ color: 0x9a9284 }));
+  platform.position.y = 0.25;
+  grp.add(platform);
+  const jets = [];
+  const mkJet = (x, z, baseH) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 1, 8), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.85 }));
+    m.position.set(x, 0.5, z);
+    m.userData.baseH = baseH;
+    grp.add(m);
+    jets.push(m);
+    return m;
+  };
+  mkJet(0, 0, 4.2); // center jet
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    mkJet(Math.cos(a) * 2.6, Math.sin(a) * 2.6, 2.2);
+  }
+  grp.position.set(RIVER_X, 0, 0);
+  scene.add(grp);
+  return { grp, jets };
+})();
+const fountainShow = { t: 0, toastedDay: -1 };
+function updateShowFountain(dtReal) {
+  fountainShow.t += dtReal;
+  const h = state.hour;
+  const night = h >= 19.5 || h < 5;
+  const t = fountainShow.t;
+  if (night && fountainShow.toastedDay !== state.day) {
+    fountainShow.toastedDay = state.day;
+    toast('⛲ عرض نافورة النيل الراقصة بدأ!');
+  }
+  showFountain.jets.forEach((j, i) => {
+    const wave = night ? (1 + Math.sin(t * 3 - i * 0.8)) / 2 : 0.45;
+    const hgt = j.userData.baseH * (0.25 + wave * 0.75);
+    j.scale.y = hgt;
+    j.position.y = 0.5 + hgt / 2;
+    if (night) j.material.color.setHSL((t * 0.12 + i * 0.09) % 1, 0.85, 0.62);
+    else j.material.color.set(0xbfe6ff);
+  });
+}
+
 // R36: elevated metro line with a running train and 2 stations
 const METRO_X = 39; // above the x=39 road, Cairo-metro style
 const metroStations = [-39, 39];
@@ -3195,6 +3239,7 @@ function animate() {
   updateConstruction(dtReal);
   updateFerry(dtReal);
   updateConvoy(dtReal);
+  updateShowFountain(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
