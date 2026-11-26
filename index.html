@@ -64,7 +64,9 @@
   @media (max-width:600px) {
     .pill { font-size:12px; padding:3px 9px; }
     #clockPill { min-width:105px; }
-    .tool { width:56px; font-size:10px; }
+    #toolbar { flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; scrollbar-width:none; }
+    #toolbar::-webkit-scrollbar { display:none; }
+    .tool { width:56px; min-width:56px; font-size:10px; }
     .tool .ic { font-size:19px; }
     #sidebtns { top:auto; bottom:118px; transform:none; }
     .sbtn { width:38px; height:38px; font-size:17px; }
@@ -683,6 +685,7 @@ function newCitizen(id) {
     path: null, seg: 0, segT: 0,
     speed: 1.6 + Math.random() * 0.7,
     x: 0, z: 0, visible: false,
+    fade: 1, fading: null,   // door enter/leave shrink-grow
     color: SKIN_CLOTH[id % SKIN_CLOTH.length],
   };
 }
@@ -693,6 +696,7 @@ function citizenStartTrip(cz, destKey, nextState) {
   cz.state = 'walk'; cz.nextState = nextState;
   cz.stateFromKey = destKey;
   cz.visible = true;
+  cz.fade = 0; cz.fading = 'in';   // grows out of the door
   cz.x = cz.path[0].x; cz.z = cz.path[0].z;
 }
 
@@ -730,8 +734,17 @@ function updateCitizens(dtGameHours, dtReal) {
       }
       cz.bob = (cz.bob || 0) + dtReal * (6 + cz.speed * 2);
       if (cz.seg >= cz.path.length - 1) {
-        cz.state = cz.nextState; cz.visible = false; cz.path = null;
+        // reached the door: shrink into the building instead of popping out
+        cz.state = cz.nextState; cz.path = null; cz.fading = 'out';
       }
+    }
+    // door fade in/out
+    if (cz.fading === 'in') {
+      cz.fade = Math.min(1, cz.fade + dtReal * 1.6);
+      if (cz.fade >= 1) cz.fading = null;
+    } else if (cz.fading === 'out') {
+      cz.fade -= dtReal * 1.6;
+      if (cz.fade <= 0) { cz.fade = 0; cz.visible = false; cz.fading = null; }
     }
   }
 }
@@ -756,7 +769,8 @@ function renderCitizens() {
     const cz = citizens[i];
     if (!cz.visible) { citizensMesh.setMatrixAt(i, ZERO_M); continue; }
     const bobY = Math.abs(Math.sin(cz.bob || 0)) * 0.12;
-    _v.set(cz.x, bobY, cz.z); _s.set(CITIZEN_SCALE, CITIZEN_SCALE, CITIZEN_SCALE);
+    const sc = CITIZEN_SCALE * Math.max(0.02, cz.fade === undefined ? 1 : cz.fade);
+    _v.set(cz.x, bobY, cz.z); _s.set(sc, sc, sc);
     _q.setFromAxisAngle(_UP, cz.heading || 0);
     _m4.compose(_v, _q, _s);
     citizensMesh.setMatrixAt(i, _m4);
@@ -1193,6 +1207,48 @@ function updateLighting() {
   for (const s of shopSigns) s.visible = showSigns;
 }
 
+// bird flocks circling above parks
+const birds = [];
+let birdMesh = null;
+function initBirds() {
+  const parks = [];
+  for (const [k, r] of state.plots) if (r.type === 'park') parks.push(plotPos(k));
+  const centers = parks.length ? parks : [{ x: 0, z: 0 }];
+  const N_FLOCK = Math.min(centers.length, IS_MOBILE ? 2 : 3);
+  for (let f = 0; f < N_FLOCK; f++) {
+    const c = centers[Math.floor(Math.random() * centers.length)];
+    for (let b = 0; b < 5; b++) {
+      birds.push({ cx: c.x, cz: c.z, r: 10 + Math.random() * 14, h: 34 + Math.random() * 16,
+        ang: Math.random() * Math.PI * 2, w: (0.25 + Math.random() * 0.2) * (Math.random() < 0.5 ? 1 : -1),
+        flap: Math.random() * Math.PI * 2 });
+    }
+  }
+  if (!birds.length) return;
+  const g = (() => {
+    const w1 = new THREE.BoxGeometry(1.0, 0.06, 0.28); w1.translate(-0.5, 0, 0);
+    const w2 = new THREE.BoxGeometry(1.0, 0.06, 0.28); w2.translate(0.5, 0, 0);
+    return mergeGeos([w1, w2]);
+  })();
+  birdMesh = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0x222831 }), birds.length);
+  birdMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(birdMesh);
+}
+function updateBirds(dtReal) {
+  if (!birdMesh) return;
+  for (let i = 0; i < birds.length; i++) {
+    const b = birds[i];
+    b.ang += b.w * dtReal;
+    b.flap += dtReal * 9;
+    _v.set(b.cx + Math.cos(b.ang) * b.r, b.h + Math.sin(b.ang * 2.3) * 1.5, b.cz + Math.sin(b.ang) * b.r);
+    _q.setFromAxisAngle(_UP, -b.ang - (b.w > 0 ? 0 : Math.PI));
+    const flap = 0.7 + Math.abs(Math.sin(b.flap)) * 0.6;
+    _s.set(1, flap, 1);
+    _m4.compose(_v, _q, _s);
+    birdMesh.setMatrixAt(i, _m4);
+  }
+  birdMesh.instanceMatrix.needsUpdate = true;
+}
+
 // ============================== Economy ==============================
 let dayAcc = 0;
 function updateEconomy(dtGameHours) {
@@ -1311,7 +1367,7 @@ renderer.domElement.addEventListener('pointerdown', e => { downPos = { x: e.clie
 renderer.domElement.addEventListener('pointerup', e => {
   if (!downPos) return;
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
-  if (moved < 8 && Date.now() - downPos.t < 500) onTap(e.clientX, e.clientY);
+  if (moved < 8 && Date.now() - downPos.t < 900) onTap(e.clientX, e.clientY);
   downPos = null;
 });
 
@@ -1712,11 +1768,76 @@ buildCitizenInstances();
 for (let i = 0; i < CFG.cars; i++) cars.push(newCar(i));
 buildCarInstances();
 initExtraVehicles();
+initBirds();
+
+// fountains in a few parks: stone basin + pulsing water jet
+const fountains = [];
+function initFountains() {
+  const parks = [];
+  for (const [k, r] of state.plots) if (r.type === 'park') parks.push(plotPos(k));
+  const picks = parks.filter((_, i) => i % Math.ceil(parks.length / 6) === 0).slice(0, 6);
+  const basinG = new THREE.CylinderGeometry(1.7, 1.9, 0.55, 12);
+  const basinM = new THREE.MeshLambertMaterial({ color: 0xb9c2cc });
+  const waterG = new THREE.CylinderGeometry(1.45, 1.45, 0.12, 12);
+  const waterM = new THREE.MeshLambertMaterial({ color: 0x3f9fe0, transparent: true, opacity: 0.85 });
+  const jetG = new THREE.ConeGeometry(0.5, 2.2, 8);
+  const jetM = new THREE.MeshLambertMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.75 });
+  for (const p of picks) {
+    const grp = new THREE.Group();
+    const basin = new THREE.Mesh(basinG, basinM); basin.position.y = 0.28;
+    const water = new THREE.Mesh(waterG, waterM); water.position.y = 0.52;
+    const jet = new THREE.Mesh(jetG, jetM); jet.position.y = 1.6;
+    grp.add(basin, water, jet);
+    grp.position.set(p.x, 0.02, p.z);
+    scene.add(grp);
+    fountains.push({ jet, water, t: Math.random() * 6 });
+  }
+}
+function updateFountains(dtReal) {
+  for (const f of fountains) {
+    f.t += dtReal;
+    const s = 0.85 + Math.sin(f.t * 3.1) * 0.25;
+    f.jet.scale.set(1, s, 1);
+    f.jet.material.opacity = 0.55 + Math.sin(f.t * 3.1) * 0.2;
+    f.water.scale.set(1 + Math.sin(f.t * 1.7) * 0.04, 1, 1 + Math.cos(f.t * 1.7) * 0.04);
+  }
+}
+initFountains();
+initBenches();
+
+// benches along park edges (instanced)
+function initBenches() {
+  const parks = [];
+  for (const [k, r] of state.plots) if (r.type === 'park') parks.push(plotPos(k));
+  if (!parks.length) return;
+  const benchG = (() => {
+    const seat = new THREE.BoxGeometry(1.6, 0.12, 0.5); seat.translate(0, 0.45, 0);
+    const back = new THREE.BoxGeometry(1.6, 0.5, 0.1); back.translate(0, 0.75, -0.22);
+    const l1 = new THREE.BoxGeometry(0.1, 0.45, 0.4); l1.translate(-0.7, 0.22, 0);
+    const l2 = new THREE.BoxGeometry(0.1, 0.45, 0.4); l2.translate(0.7, 0.22, 0);
+    return mergeGeos([seat, back, l1, l2]);
+  })();
+  const benchM = new THREE.MeshLambertMaterial({ color: 0x7a4e2d });
+  const spots = [];
+  for (const p of parks.slice(0, 12)) {
+    spots.push({ x: p.x - 6.5, z: p.z + 6.5, ry: Math.PI / 4 });
+    spots.push({ x: p.x + 6.5, z: p.z - 6.5, ry: Math.PI / 4 });
+  }
+  const inst = new THREE.InstancedMesh(benchG, benchM, spots.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+  for (let i = 0; i < spots.length; i++) {
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), spots[i].ry);
+    v.set(spots[i].x, 0.02, spots[i].z);
+    m.compose(v, q, s);
+    inst.setMatrixAt(i, m);
+  }
+  scene.add(inst);
+}
 
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
-window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, fps: 0,
+window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, fps: 0,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
@@ -1750,6 +1871,8 @@ function animate() {
   perfT += dtReal * state.speed;
   updateTrafficLights(perfT);
   updateAudio();
+  updateBirds(dtReal);
+  updateFountains(dtReal);
 
   if (state.speed > 0) {
     state.hour += dtGameHours;
