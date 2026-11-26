@@ -459,6 +459,24 @@ function createBuildingMesh(type, x, z) {
     mesh.add(sign);
     shopSigns.push(sign);
   }
+  // Egyptian rooftop life: white water tanks + AC units on flat roofs
+  if (type === 'office' || type === 'shop') {
+    const tankMat = new THREE.MeshLambertMaterial({ color: 0xf0ede4 });
+    const acMat = new THREE.MeshLambertMaterial({ color: 0x9aa2ab });
+    const nTanks = 1 + (Math.random() < 0.4 ? 1 : 0);
+    for (let t = 0; t < nTanks; t++) {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 1.15, 8), tankMat);
+      tank.position.set((Math.random() - 0.5) * (w - 2), h / 2 + 0.58, (Math.random() - 0.5) * (d - 2));
+      mesh.add(tank);
+    }
+    const nAC = 1 + Math.floor(Math.random() * 3);
+    for (let a = 0; a < nAC; a++) {
+      const ac = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.5, 0.6), acMat);
+      ac.position.set((Math.random() - 0.5) * (w - 1.6), h / 2 + 0.26, (Math.random() - 0.5) * (d - 1.6));
+      ac.rotation.y = Math.random() * Math.PI;
+      mesh.add(ac);
+    }
+  }
   mesh.userData = { type, h };
   return mesh;
 }
@@ -1249,6 +1267,37 @@ function updateBirds(dtReal) {
   birdMesh.instanceMatrix.needsUpdate = true;
 }
 
+// felucca sailing up and down the river
+const felucca = (() => {
+  const grp = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 0.9), new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
+  hull.position.y = 0.3;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.6, 5), new THREE.MeshLambertMaterial({ color: 0x4a3626 }));
+  mast.position.y = 2.1;
+  // lateen sail: white triangle
+  const sailShape = new THREE.Shape();
+  sailShape.moveTo(0, 0); sailShape.lineTo(2.6, 0.7); sailShape.lineTo(0.15, 2.6); sailShape.closePath();
+  const sail = new THREE.Mesh(new THREE.ShapeGeometry(sailShape), new THREE.MeshLambertMaterial({ color: 0xf5f2e8, side: THREE.DoubleSide }));
+  sail.position.set(0, 1.0, 0);
+  grp.add(hull, mast, sail);
+  return grp;
+})();
+scene.add(felucca);
+const feluccaState = { z: -HALF + 20, dir: 1, speed: 2.2 };
+function updateFelucca(dtReal) {
+  feluccaState.z += feluccaState.dir * feluccaState.speed * dtReal;
+  if (feluccaState.z > HALF - 15) feluccaState.dir = -1;
+  if (feluccaState.z < -HALF + 15) feluccaState.dir = 1;
+  // duck under bridge decks: shrink near road crossings
+  const nearestBridge = Math.round((feluccaState.z + HALF) / CFG.pitch) * CFG.pitch - HALF;
+  const dBridge = Math.abs(feluccaState.z - nearestBridge);
+  const duck = Math.max(0.15, Math.min(1, (dBridge - 2.5) / 3));
+  felucca.scale.set(duck, duck, duck);
+  felucca.position.set(RIVER_X, (0.15 + Math.sin(perfT * 1.3) * 0.06) * duck, feluccaState.z);
+  felucca.rotation.y = feluccaState.dir > 0 ? 0 : Math.PI;
+  felucca.rotation.z = Math.sin(perfT * 1.1) * 0.04;
+}
+
 // ============================== Economy ==============================
 let dayAcc = 0;
 function updateEconomy(dtGameHours) {
@@ -1837,7 +1886,7 @@ function initBenches() {
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
-window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, fps: 0,
+window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
@@ -1873,6 +1922,7 @@ function animate() {
   updateAudio();
   updateBirds(dtReal);
   updateFountains(dtReal);
+  updateFelucca(dtReal);
 
   if (state.speed > 0) {
     state.hour += dtGameHours;
