@@ -5187,6 +5187,111 @@ function updateLevelCrossing(dtReal) {
 }
 initLevelCrossing();
 
+// R67: morning fish market (سوق السمك) on the east corniche — striped stalls, fish crates, dawn crowd 6-11h
+let fishMarket = null;
+function initFishMarket() {
+  if (fishMarket) return;
+  const FX = -5.5, Z0 = 58;
+  const grp = new THREE.Group();
+  // wet sandy strip
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.16, 16), new THREE.MeshLambertMaterial({ color: 0xcfc0a0 }));
+  strip.position.set(FX, 0.08, Z0 + 7);
+  grp.add(strip);
+  // striped awning texture
+  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 32;
+  const g = cv.getContext('2d');
+  for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#2f9de8' : '#f2f2ee'; g.fillRect(i * 8, 0, 8, 32); }
+  const awnTex = new THREE.CanvasTexture(cv);
+  // 4 stalls
+  for (let i = 0; i < 4; i++) {
+    const sz = Z0 + 1.8 + i * 3.6;
+    const table = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 2.4), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+    table.position.set(FX, 0.55, sz);
+    grp.add(table);
+    const awn = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 2.8), new THREE.MeshLambertMaterial({ map: awnTex }));
+    awn.position.set(FX - 0.2, 2.15, sz);
+    awn.rotation.z = 0.12;
+    grp.add(awn);
+    for (const [px, pz] of [[-0.9, -1.2], [-0.9, 1.2]]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.1, 5), new THREE.MeshLambertMaterial({ color: 0x6b5a3e }));
+      p.position.set(FX + px, 1.05, sz + pz);
+      grp.add(p);
+    }
+    // fish crates with silver fish
+    for (let c = 0; c < 2; c++) {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.5), new THREE.MeshLambertMaterial({ color: 0x4a7a9e }));
+      crate.position.set(FX + 0.2, 1.05 + c * 0.26, sz - 0.5 + c * 1.0);
+      grp.add(crate);
+      for (let fi = 0; fi < 3; fi++) {
+        const f = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.42, 5), new THREE.MeshLambertMaterial({ color: 0xb8c8d0 }));
+        f.rotation.z = Math.PI / 2;
+        f.position.set(FX + 0.2, 1.2 + c * 0.26, sz - 0.62 + c * 1.0 + fi * 0.12);
+        grp.add(f);
+      }
+    }
+  }
+  // hanging scale on the first stall
+  const scalePole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 5), new THREE.MeshLambertMaterial({ color: 0x4a4f58 }));
+  scalePole.position.set(FX - 1.0, 2.6, Z0 + 1.8);
+  const scalePan = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.08, 10), new THREE.MeshLambertMaterial({ color: 0xd8d8d2 }));
+  scalePan.position.set(FX - 1.0, 2.0, Z0 + 1.8);
+  grp.add(scalePole, scalePan);
+  // sign facing the river
+  const cv2 = document.createElement('canvas'); cv2.width = 224; cv2.height = 48;
+  const g2 = cv2.getContext('2d');
+  g2.fillStyle = '#1f4d6f'; g2.fillRect(0, 0, 224, 48);
+  g2.fillStyle = '#cfe8ff'; g2.font = 'bold 30px Tahoma'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.fillText('سوق السمك 🐟', 112, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.95), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), side: THREE.DoubleSide }));
+  sign.position.set(FX - 1.8, 2.8, Z0 + 7);
+  sign.rotation.y = -Math.PI / 2;
+  grp.add(sign);
+  scene.add(grp);
+  // sellers + morning buyers
+  const people = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 8; i++) {
+    const p = new THREE.Group();
+    const seller = i < 4;
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: seller ? 0x3a6f9e : new THREE.Color().setHSL(Math.random(), 0.4, 0.5) }));
+    shirt.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i % 3] }));
+    head.position.y = 1.15;
+    p.add(shirt, head);
+    p.userData = { slot: i, seller, ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    people.push(p);
+  }
+  fishMarket = { grp, people, t: 0, toastedDay: -1, FX, Z0 };
+}
+function updateFishMarket(dtReal) {
+  if (!fishMarket) return;
+  const m = fishMarket;
+  m.t += dtReal;
+  const h = state.hour;
+  const open = h >= 6 && h < 11;
+  if (open && m.toastedDay !== state.day) {
+    m.toastedDay = state.day;
+    toast('🐟 سوق السمك فتح — صيد طازة من الفجر!');
+  }
+  for (const p of m.people) {
+    p.visible = open;
+    if (!open) continue;
+    const u = p.userData;
+    if (u.seller) {
+      p.position.set(m.FX + 1.3, 0.2, m.Z0 + 1.8 + u.slot * 3.6);
+      p.rotation.y = -Math.PI / 2;
+    } else {
+      const bz = m.Z0 + 2 + (u.slot - 4) * 3.4;
+      p.position.set(m.FX - 1.6 + Math.sin(m.t * 0.9 + u.ph) * 0.3, 0.2, bz + Math.cos(m.t * 0.7 + u.ph) * 0.4);
+      p.rotation.y = Math.PI / 2;
+    }
+  }
+}
+initFishMarket();
+
+
 
 
 
@@ -5406,6 +5511,7 @@ function animate() {
   updateDinnerCruise(dtReal);
   updateFunfair(dtReal);
   updateLevelCrossing(dtReal);
+  updateFishMarket(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
