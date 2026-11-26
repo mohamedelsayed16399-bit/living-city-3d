@@ -4767,6 +4767,104 @@ function updateNakheel(dtReal) {
 }
 initNakheel();
 
+// R62: pedestrian bridge over the Nile (كوبري المشاة) — arched walkway, lamps, people crossing day and night
+let pedBridge = null;
+function initPedBridge() {
+  if (pedBridge) return;
+  const BZ = 26, X0 = -20, X1 = -6;
+  const grp = new THREE.Group();
+  const archY = x => { const k = (x - X0) / (X1 - X0); return 0.6 + Math.sin(k * Math.PI) * 1.6; };
+  // arched deck segments
+  const segs = 14;
+  for (let i = 0; i < segs; i++) {
+    const x0 = X0 + (X1 - X0) * i / segs, x1 = X0 + (X1 - X0) * (i + 1) / segs;
+    const xm = (x0 + x1) / 2, y0 = archY(x0), y1 = archY(x1);
+    const len = Math.hypot(x1 - x0, y1 - y0) + 0.05;
+    const d = new THREE.Mesh(new THREE.BoxGeometry(len, 0.18, 2.2), new THREE.MeshLambertMaterial({ color: 0xc9b294 }));
+    d.position.set(xm, (y0 + y1) / 2, BZ);
+    d.rotation.z = Math.atan2(y1 - y0, x1 - x0);
+    grp.add(d);
+    // railings
+    for (const rz of [-1.05, 1.05]) {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(len, 0.1, 0.08), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+      r.position.set(xm, (y0 + y1) / 2 + 0.65, BZ + rz);
+      r.rotation.z = Math.atan2(y1 - y0, x1 - x0);
+      grp.add(r);
+      const rp = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.65, 0.08), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+      rp.position.set(x0, y0 + 0.35, BZ + rz);
+      grp.add(rp);
+    }
+  }
+  // support pillars into the water
+  for (const px of [-16.5, -13, -9.5]) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 2.2, 8), new THREE.MeshLambertMaterial({ color: 0x8a8f98 }));
+    p.position.set(px, archY(px) / 2 - 0.4, BZ);
+    grp.add(p);
+  }
+  // lamps on the bridge
+  const lamps = [];
+  for (const lx of [-18, -13, -8]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.8, 6), new THREE.MeshLambertMaterial({ color: 0x4a4f58 }));
+    pole.position.set(lx, archY(lx) + 0.9, BZ + 1.0);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffd98a }));
+    bulb.position.set(lx, archY(lx) + 1.85, BZ + 1.0);
+    grp.add(pole, bulb);
+    lamps.push(bulb);
+  }
+  // entrance sign on the east side, facing the corniche
+  const cv = document.createElement('canvas'); cv.width = 224; cv.height = 48;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#274d36'; g.fillRect(0, 0, 224, 48);
+  g.fillStyle = '#ffe9a8'; g.font = 'bold 28px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('كوبري المشاة 🌉', 112, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(X1 + 0.4, archY(X1) + 2.2, BZ);
+  sign.rotation.y = Math.PI / 2;
+  const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.4, 6), new THREE.MeshLambertMaterial({ color: 0x4a4f58 }));
+  signPost.position.set(X1 + 0.4, archY(X1) + 0.9, BZ);
+  grp.add(sign, signPost);
+  scene.add(grp);
+  // walkers crossing in both directions
+  const walkers = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 6; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.5, 0.5) }));
+    shirt.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i % 3] }));
+    head.position.y = 1.15;
+    p.add(shirt, head);
+    p.userData = { dir: i % 2 ? 1 : -1, off: i / 6, lane: (i % 3 - 1) * 0.55, sp: 0.55 + (i % 3) * 0.12 };
+    scene.add(p);
+    walkers.push(p);
+  }
+  pedBridge = { grp, lamps, walkers, archY, X0, X1, BZ, t: 0, toastedDay: -1 };
+}
+function updatePedBridge(dtReal) {
+  if (!pedBridge) return;
+  const b = pedBridge;
+  b.t += dtReal;
+  const h = state.hour;
+  const night = h >= 18 || h < 6;
+  for (const l of b.lamps) l.material.color.setHex(night ? 0xffd98a : 0xd8d8d2);
+  if (night && b.toastedDay !== state.day) {
+    b.toastedDay = state.day;
+    toast('🌉 كوبري المشاة اتنوّر!');
+  }
+  const busy = h >= 7 && h < 23;
+  for (const p of b.walkers) {
+    p.visible = busy;
+    if (!busy) continue;
+    const u = p.userData;
+    const k = ((b.t * u.sp * 0.03 + u.off) % 1);
+    const x = u.dir > 0 ? b.X0 + (b.X1 - b.X0) * k : b.X1 - (b.X1 - b.X0) * k;
+    p.position.set(x, b.archY(x) + 0.1, b.BZ + u.lane);
+    p.rotation.y = u.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  }
+}
+initPedBridge();
+
+
 
 
 
@@ -4978,6 +5076,7 @@ function animate() {
   updateIslandWedding(dtReal);
   updateTram(dtReal);
   updateNakheel(dtReal);
+  updatePedBridge(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
