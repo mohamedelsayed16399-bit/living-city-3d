@@ -81,6 +81,7 @@
   <div class="pill" id="weatherPill">☀️ <span id="weatherTxt">مشمس</span></div>
   <div class="pill">💰 <span id="moneyTxt">5000</span></div>
   <div class="pill">👥 <span id="popTxt">0</span></div>
+  <div class="pill">😊 <span id="happyTxt">--%</span></div>
   <button class="spd" id="spd0" title="إيقاف">⏸</button>
   <button class="spd on" id="spd1" title="سرعة عادية">▶</button>
   <button class="spd" id="spd4" title="سريع">⏩</button>
@@ -144,6 +145,8 @@ const CFG = {
   gameHoursPerRealSec: 0.25, // at 1x speed: full day = 96 seconds
 };
 const HALF = CFG.blocks * CFG.pitch / 2; // 117
+const RIVER_K = 4;                       // vertical road line index replaced by a river
+const RIVER_X = -HALF + RIVER_K * CFG.pitch;
 const COSTS = { house: 300, shop: 800, office: 1500, park: 200 };
 const AR_NAMES = ['أحمد','محمد','محمود','مصطفى','يوسف','علي','حسن','كريم','طارق','عمر','سارة','فاطمة','مريم','نور','هدى','منى','آية','دينا','ياسمين','سلمى','خالد','إبراهيم','عبدالله','زياد','هشام','ولاء','رنا','بسمة','شيماء','إيمان'];
 const JOBS = ['مهندس','دكتور','مدرس','محاسب','مبرمج','طبيب أسنان','صيدلي','تاجر','سائق','فنان','موظف بنك','طاهٍ','نجار','كهربائي','مصمم','محامي'];
@@ -219,23 +222,46 @@ function makeGroundTexture() {
   }
   const roadC = '#33373d', sideC = '#9aa0a6';
   const rw = CFG.roadW * w2c, sw = 2.2 * w2c;
-  // roads (vertical + horizontal at road lines)
+  const riverW = 11 * w2c;
+  // river banks first (sand strip where the vertical road would be)
+  g.fillStyle = '#b8a878';
+  g.fillRect(W(-HALF + RIVER_K * CFG.pitch) - riverW / 2 - 2.5 * w2c, 0, riverW + 5 * w2c, S);
+  // water
+  const wg = g.createLinearGradient(W(-HALF + RIVER_K * CFG.pitch) - riverW / 2, 0, W(-HALF + RIVER_K * CFG.pitch) + riverW / 2, 0);
+  wg.addColorStop(0, '#2a6a9a'); wg.addColorStop(0.5, '#3a8abd'); wg.addColorStop(1, '#2a6a9a');
+  g.fillStyle = wg;
+  g.fillRect(W(-HALF + RIVER_K * CFG.pitch) - riverW / 2, 0, riverW, S);
+  // water shimmer lines
+  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1.5;
+  for (let i = 0; i < 60; i++) {
+    const yy = Math.random() * S, xx = W(-HALF + RIVER_K * CFG.pitch) - riverW / 2 + Math.random() * riverW;
+    g.beginPath(); g.moveTo(xx - 6, yy); g.lineTo(xx + 6, yy); g.stroke();
+  }
+  // roads (vertical + horizontal at road lines; skip the river line vertically)
   for (let k = 0; k <= CFG.blocks; k++) {
     const x = -HALF + k * CFG.pitch;
     // sidewalk
     g.fillStyle = sideC;
-    g.fillRect(W(x) - rw / 2 - sw, 0, rw + sw * 2, S);
+    if (k !== RIVER_K) g.fillRect(W(x) - rw / 2 - sw, 0, rw + sw * 2, S);
     g.fillRect(0, W(x) - rw / 2 - sw, S, rw + sw * 2);
     // asphalt
     g.fillStyle = roadC;
-    g.fillRect(W(x) - rw / 2, 0, rw, S);
+    if (k !== RIVER_K) g.fillRect(W(x) - rw / 2, 0, rw, S);
     g.fillRect(0, W(x) - rw / 2, S, rw);
+  }
+  // bridge decks where horizontal roads cross the river
+  for (let k = 0; k <= CFG.blocks; k++) {
+    const z = -HALF + k * CFG.pitch;
+    g.fillStyle = '#6a5a48';
+    g.fillRect(W(-HALF + RIVER_K * CFG.pitch) - riverW / 2 - 1.5 * w2c, W(z) - rw / 2, riverW + 3 * w2c, rw);
+    g.fillStyle = roadC;
+    g.fillRect(W(-HALF + RIVER_K * CFG.pitch) - riverW / 2 - 1.5 * w2c, W(z) - rw / 2 + 1.2 * w2c, riverW + 3 * w2c, rw - 2.4 * w2c);
   }
   // lane dashes
   g.strokeStyle = '#e8e4c8'; g.lineWidth = Math.max(1.5, 0.28 * w2c); g.setLineDash([4 * w2c, 3 * w2c]);
   for (let k = 0; k <= CFG.blocks; k++) {
     const x = -HALF + k * CFG.pitch;
-    g.beginPath(); g.moveTo(W(x), 0); g.lineTo(W(x), S); g.stroke();
+    if (k !== RIVER_K) { g.beginPath(); g.moveTo(W(x), 0); g.lineTo(W(x), S); g.stroke(); }
     g.beginPath(); g.moveTo(0, W(x)); g.lineTo(S, W(x)); g.stroke();
   }
   g.setLineDash([]);
@@ -447,12 +473,16 @@ function removeBuilding(key) {
 }
 
 function recalcStats() {
-  let pop = 0, jobs = 0;
-  for (const rec of state.plots.values()) { pop += rec.pop || 0; jobs += rec.jobs || 0; }
+  let pop = 0, jobs = 0, parks = 0;
+  for (const rec of state.plots.values()) { pop += rec.pop || 0; jobs += rec.jobs || 0; if (rec.type === 'park') parks++; }
   state.population = pop;
   state.jobs = jobs;
+  state.parks = parks;
+  const jobless = Math.max(0, pop - jobs * 4);
+  state.happiness = Math.max(5, Math.min(99, Math.round(55 + Math.min(20, parks * 1.5) - Math.min(30, jobless * 0.4))));
   document.getElementById('popTxt').textContent = pop;
   document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+  document.getElementById('happyTxt').textContent = state.happiness + '%';
 }
 
 // street lamps (instanced: 2 draw calls total)
@@ -518,6 +548,7 @@ let carsMesh = null;
 const cars = [];
 
 const CAR_COLORS = [0xd43a2f, 0x2f6fed, 0xf0f0f0, 0x222831, 0xf2b02e, 0x3fae5a, 0x8a4ad4, 0xd4822f];
+let nightGlow = 0; // 0 by day, 1 at night (set in updateLighting)
 const SKIN_CLOTH = [0xd4a017, 0x2f6fed, 0xc23a3a, 0x3fae5a, 0xe8e0d0, 0x7a4ad4, 0x2fa8a0, 0xd46a9a, 0x885a2a, 0x445];
 
 function sidewalkPoint(key) {
@@ -541,7 +572,8 @@ function makePath(fromKey, toKey) {
   const off = CFG.roadW / 2 + 0.9;
   const ka = { i: Math.round((a.x + HALF) / CFG.pitch), j: Math.round((a.z + HALF) / CFG.pitch) };
   const kb = { i: Math.round((b.x + HALF) / CFG.pitch), j: Math.round((b.z + HALF) / CFG.pitch) };
-  const lineX = (i) => -HALF + i * CFG.pitch + off;
+  const fix = (i) => (i === RIVER_K ? (RIVER_K + 1 > CFG.blocks ? RIVER_K - 1 : RIVER_K + 1) : i);
+  const lineX = (i) => -HALF + fix(i) * CFG.pitch + off;
   const lineZ = (j) => -HALF + j * CFG.pitch + off;
   const startX = lineX(Math.max(0, Math.min(CFG.blocks, ka.i)));
   const startZ = lineZ(Math.max(0, Math.min(CFG.blocks, ka.j)));
@@ -717,10 +749,14 @@ function carMustStop(car) {
 }
 
 // ============================== Cars ==============================
+function pickRoadLineIdx() {
+  let k = 1 + Math.floor(Math.random() * (CFG.blocks - 1));
+  if (k === RIVER_K) k = (RIVER_K + 1 > CFG.blocks - 1) ? RIVER_K - 1 : RIVER_K + 1;
+  return k;
+}
 function newCar(id) {
   const dir = Math.random() < 0.5 ? 'x' : 'z';
-  const k = 1 + Math.floor(Math.random() * (CFG.blocks - 1));
-  const line = -HALF + k * CFG.pitch;
+  const line = -HALF + pickRoadLineIdx() * CFG.pitch;
   return {
     id, dir, line,
     pos: -HALF + Math.random() * HALF * 2,
@@ -732,6 +768,19 @@ function newCar(id) {
 }
 function updateCars(dtReal) {
   const rush = (state.hour >= 7 && state.hour < 9.5) || (state.hour >= 16.5 && state.hour < 19.5);
+  // ambulance spawns periodically and races through
+  if (!ambulance) {
+    ambCooldown -= dtReal;
+    if (ambCooldown <= 0) {
+      ambulance = newCar(0);
+      ambulance.speed = 15;
+      ambCooldown = 70 + Math.random() * 80;
+      toast('🚑 عربية إسعاف عدّت بسرعة في المدينة!');
+    }
+  } else {
+    ambulance.pos += ambulance.heading * ambulance.speed * dtReal;
+    if (ambulance.pos > HALF + 6 || ambulance.pos < -HALF - 6) ambulance = null;
+  }
   for (const car of cars) {
     car.targetActive = rush ? true : (car.id % 3 !== 0); // fewer cars off-peak
     if (car.wait > 0) { car.wait -= dtReal; continue; }
@@ -740,10 +789,28 @@ function updateCars(dtReal) {
     const rel = car.pos + HALF;
     const nearInt = Math.abs(rel / CFG.pitch - Math.round(rel / CFG.pitch)) * CFG.pitch;
     if (nearInt < 1.2 && Math.random() < 0.008) car.wait = 0.5 + Math.random() * 1.5;
-    if (car.pos > HALF + 4) { car.pos = -HALF - 4; car.line = -HALF + (1 + Math.floor(Math.random() * (CFG.blocks - 1))) * CFG.pitch; }
-    if (car.pos < -HALF - 4) { car.pos = HALF + 4; car.line = -HALF + (1 + Math.floor(Math.random() * (CFG.blocks - 1))) * CFG.pitch; }
+    if (car.pos > HALF + 4) { car.pos = -HALF - 4; car.line = -HALF + pickRoadLineIdx() * CFG.pitch; }
+    if (car.pos < -HALF - 4) { car.pos = HALF + 4; car.line = -HALF + pickRoadLineIdx() * CFG.pitch; }
   }
 }
+// headlights: one merged twin-light geometry, instanced with the cars
+const headlightGeo = (() => {
+  const a = new THREE.BoxGeometry(0.18, 0.14, 0.14); a.translate(1.12, 0.5, 0.35);
+  const b = new THREE.BoxGeometry(0.18, 0.14, 0.14); b.translate(1.12, 0.5, -0.35);
+  return mergeGeos([a, b]);
+})();
+const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0 });
+let headlightMesh = null;
+// ambulance beacon
+const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+beacon.visible = false;
+scene.add(beacon);
+const ambMesh = new THREE.Mesh(carGeo, new THREE.MeshLambertMaterial({ color: 0xf4f6f8 }));
+ambMesh.visible = false;
+scene.add(ambMesh);
+let beaconT = 0;
+let ambulance = null, ambCooldown = 45;
+
 function buildCarInstances() {
   if (carsMesh) { scene.remove(carsMesh); carsMesh.geometry.dispose(); }
   carsMesh = new THREE.InstancedMesh(carGeo, carMat, cars.length);
@@ -751,6 +818,10 @@ function buildCarInstances() {
   const col = new THREE.Color();
   for (let i = 0; i < cars.length; i++) carsMesh.setColorAt(i, col.setHex(cars[i].color));
   scene.add(carsMesh);
+  if (headlightMesh) scene.remove(headlightMesh);
+  headlightMesh = new THREE.InstancedMesh(headlightGeo, headlightMat, cars.length);
+  headlightMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(headlightMesh);
 }
 function renderCars() {
   if (!carsMesh) return;
@@ -761,12 +832,30 @@ function renderCars() {
     const x = car.dir === 'x' ? car.pos : car.line + laneOff * car.heading;
     const z = car.dir === 'x' ? car.line + laneOff * car.heading : car.pos;
     _v.set(x, 0.1, z);
-    _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), car.dir === 'x' ? (car.heading > 0 ? 0 : Math.PI) : (car.heading > 0 ? -Math.PI / 2 : Math.PI / 2));
+    _q.setFromAxisAngle(_UP, car.dir === 'x' ? (car.heading > 0 ? 0 : Math.PI) : (car.heading > 0 ? -Math.PI / 2 : Math.PI / 2));
     _s.set(1, 1, 1);
     _m4.compose(_v, _q, _s);
     carsMesh.setMatrixAt(i, _m4);
+    if (headlightMesh) {
+      _s.set(nightGlow, nightGlow, nightGlow);
+      _m4.compose(_v, _q, _s);
+      headlightMesh.setMatrixAt(i, _m4);
+    }
   }
   carsMesh.instanceMatrix.needsUpdate = true;
+  if (headlightMesh) headlightMesh.instanceMatrix.needsUpdate = true;
+  // ambulance event
+  if (ambulance) {
+    beacon.visible = true;
+    beaconT += 6;
+    beacon.material.color.setHex(Math.floor(beaconT / 4) % 2 ? 0x2244ff : 0xff2222);
+    const ax = ambulance.dir === 'x' ? ambulance.pos : ambulance.line + laneOff * ambulance.heading;
+    const az = ambulance.dir === 'x' ? ambulance.line + laneOff * ambulance.heading : ambulance.pos;
+    beacon.position.set(ax, 1.5, az);
+    ambMesh.visible = true;
+    ambMesh.position.set(ax, 0.1, az);
+    ambMesh.rotation.y = ambulance.dir === 'x' ? (ambulance.heading > 0 ? 0 : Math.PI) : (ambulance.heading > 0 ? -Math.PI / 2 : Math.PI / 2);
+  } else { beacon.visible = false; ambMesh.visible = false; }
 }
 
 // ============================== Sky / day-night ==============================
@@ -878,6 +967,7 @@ function updateLighting() {
   moonLight.intensity = isNight ? 0.16 : 0;
   // windows + lamps at night
   const glow = state.hour >= 18.2 || state.hour < 5.8 ? 1 : 0;
+  nightGlow += (glow - nightGlow) * 0.08;
   for (const k in facadeCache) for (const m of facadeCache[k]) {
     m.emissiveIntensity += ((glow ? 0.85 : 0) - m.emissiveIntensity) * 0.06;
   }
@@ -891,7 +981,7 @@ function updateEconomy(dtGameHours) {
   if (dayAcc >= 24) {
     dayAcc -= 24;
     state.day++;
-    const income = state.population * 3 + state.jobs * 2;
+    const income = Math.round((state.population * 3 + state.jobs * 2) * (0.7 + (state.happiness || 60) / 200));
     state.money += income;
     toast(`💰 دخل اليوم: ${income} جنيه — يوم ${state.day}`);
     document.getElementById('dayTxt').textContent = 'يوم ' + state.day;
