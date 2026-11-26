@@ -1685,6 +1685,109 @@ function updateFerry(dtReal) {
   ferry.rotation.z = Math.sin(ferryState.t * 0.9) * 0.015;
 }
 
+// R39: wedding convoy (زفة) circling downtown every evening, with balloons and music notes
+const CONVOY_R = 13, CONVOY_CX = 26, CONVOY_CZ = 0;
+const convoyCars = [];
+for (let i = 0; i < 5; i++) {
+  const car = new THREE.Group();
+  const isLead = i === 0;
+  const bodyCol = isLead ? 0xf7f7f7 : [0xd23c3c, 0x3c78d2, 0xf2b705, 0x7a4ac8][i - 1];
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.6, 1.2), new THREE.MeshLambertMaterial({ color: bodyCol }));
+  body.position.y = 0.35;
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.1), new THREE.MeshLambertMaterial({ color: 0xbfd8e8 }));
+  top.position.set(-0.2, 0.85, 0);
+  car.add(body, top);
+  // pink ribbon bows on the hood
+  const bowMat = new THREE.MeshLambertMaterial({ color: 0xff7ab8 });
+  for (const bs of [-1, 1]) {
+    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, 0.5), bowMat);
+    bow.position.set(1.15, 0.72, bs * 0.3);
+    bow.rotation.y = bs * 0.5;
+    car.add(bow);
+  }
+  // headlights
+  const hlMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
+  for (const hs of [-1, 1]) {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.2), hlMat);
+    hl.position.set(1.32, 0.35, hs * 0.4);
+    car.add(hl);
+  }
+  if (isLead) {
+    // balloon bunch floating above the lead car
+    const balCols = [0xff7ab8, 0x7ab8ff, 0xfff07a];
+    car.userData.balloons = [];
+    balCols.forEach((c, bi) => {
+      const bal = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), new THREE.MeshLambertMaterial({ color: c }));
+      bal.position.set(-0.9 + bi * 0.5, 2.1 + (bi % 2) * 0.3, (bi - 1) * 0.4);
+      car.add(bal);
+      car.userData.balloons.push(bal);
+    });
+  }
+  car.visible = false;
+  scene.add(car);
+  convoyCars.push(car);
+}
+const convoyState = { d: 0, active: false, toastedDay: -1, noteT: 0 };
+function convoyPos(d) {
+  const P = 8 * CONVOY_R;
+  d = ((d % P) + P) % P;
+  const side = Math.floor(d / (2 * CONVOY_R)) % 4;
+  const t = (d % (2 * CONVOY_R)) - CONVOY_R;
+  if (side === 0) return { x: CONVOY_CX + t, z: CONVOY_CZ - CONVOY_R, ry: 0 };
+  if (side === 1) return { x: CONVOY_CX + CONVOY_R, z: CONVOY_CZ + t, ry: -Math.PI / 2 };
+  if (side === 2) return { x: CONVOY_CX - t, z: CONVOY_CZ + CONVOY_R, ry: Math.PI };
+  return { x: CONVOY_CX - CONVOY_R, z: CONVOY_CZ - t, ry: Math.PI / 2 };
+}
+// floating music notes (small pooled sprites)
+const noteCanvas = document.createElement('canvas'); noteCanvas.width = noteCanvas.height = 64;
+(() => { const g = noteCanvas.getContext('2d'); g.font = 'bold 48px serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText('♪', 32, 34); })();
+const noteTex = new THREE.CanvasTexture(noteCanvas);
+const notes = [];
+for (let i = 0; i < 12; i++) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTex, transparent: true, opacity: 0, depthWrite: false }));
+  sp.scale.set(1.2, 1.2, 1);
+  sp.visible = false;
+  scene.add(sp);
+  notes.push({ sp, t: 99 });
+}
+let noteIdx = 0;
+function updateConvoy(dtReal) {
+  const h = state.hour;
+  const want = h >= 19 && h < 20.5;
+  if (want && !convoyState.active) {
+    convoyState.active = true;
+    convoyState.d = 0;
+    if (convoyState.toastedDay !== state.day) { convoyState.toastedDay = state.day; toast('🎊 زفة عدّت من وسط البلد!'); }
+  } else if (!want && convoyState.active) {
+    convoyState.active = false;
+  }
+  convoyCars.forEach(c => c.visible = convoyState.active);
+  if (!convoyState.active) return;
+  convoyState.d += dtReal * 2.6;
+  convoyCars.forEach((car, i) => {
+    const p = convoyPos(convoyState.d - i * 4.5);
+    car.position.set(p.x, 0.25, p.z);
+    car.rotation.y = p.ry;
+    if (car.userData.balloons) car.userData.balloons.forEach((b, bi) => { b.position.y = 2.1 + (bi % 2) * 0.3 + Math.sin(ferryState.t * 2 + bi) * 0.12; });
+  });
+  // spawn a music note from a random car
+  convoyState.noteT += dtReal;
+  if (convoyState.noteT > 0.4) {
+    convoyState.noteT = 0;
+    const n = notes[noteIdx++ % notes.length];
+    const car = convoyCars[Math.floor(Math.random() * convoyCars.length)];
+    n.sp.position.copy(car.position); n.sp.position.y = 1.6;
+    n.sp.visible = true; n.t = 0;
+  }
+  for (const n of notes) {
+    if (!n.sp.visible) continue;
+    n.t += dtReal;
+    n.sp.position.y += dtReal * 1.2;
+    n.sp.material.opacity = Math.max(0, 1 - n.t / 2);
+    if (n.t > 2) n.sp.visible = false;
+  }
+}
+
 // R36: elevated metro line with a running train and 2 stations
 const METRO_X = 39; // above the x=39 road, Cairo-metro style
 const metroStations = [-39, 39];
@@ -3091,6 +3194,7 @@ function animate() {
   updateMetro(dtReal);
   updateConstruction(dtReal);
   updateFerry(dtReal);
+  updateConvoy(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
