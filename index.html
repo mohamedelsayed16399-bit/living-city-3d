@@ -337,6 +337,8 @@ function facadeMats(type, floors) {
   return mats;
 }
 const roofMat = new THREE.MeshLambertMaterial({ color: 0x5a5f6a });
+const signMat = new THREE.MeshBasicMaterial({ color: 0x36e0a8 });
+const shopSigns = [];
 
 const BUILD_TYPES = {
   house:  { hMin: 3.2, hMax: 5.5, floors: 2, pop: 4, jobs: 0, label: 'بيت' },
@@ -448,6 +450,13 @@ function createBuildingMesh(type, x, z) {
     flag.position.set(0.48, h / 2 + 2.2, 0);
     mesh.add(pole, flag);
   }
+  if (type === 'shop') {
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 0.5, 0.15), signMat);
+    sign.position.set(0, h / 2 - 1.2, d / 2 + 0.1);
+    sign.visible = false;
+    mesh.add(sign);
+    shopSigns.push(sign);
+  }
   mesh.userData = { type, h };
   return mesh;
 }
@@ -483,7 +492,10 @@ function placeBuilding(type, key, silent) {
 function removeBuilding(key) {
   const rec = state.plots.get(key);
   if (!rec) return false;
-  if (rec.mesh) { buildGroup.remove(rec.mesh); }
+  if (rec.mesh) {
+    buildGroup.remove(rec.mesh);
+    rec.mesh.traverse(o => { const i = shopSigns.indexOf(o); if (i >= 0) shopSigns.splice(i, 1); });
+  }
   if (rec.trees) removeTreesOf(key);
   state.plots.delete(key);
   recalcStats();
@@ -728,6 +740,48 @@ function renderCitizens() {
     citizensMesh.setMatrixAt(i, _m4);
   }
   citizensMesh.instanceMatrix.needsUpdate = true;
+}
+
+// ============================== Buses (fixed loop on outer roads) ==============================
+const busGeo = (() => {
+  const body = new THREE.BoxGeometry(4.6, 1.5, 1.3); body.translate(0, 0.95, 0);
+  const win = new THREE.BoxGeometry(4.0, 0.6, 1.34); win.translate(-0.1, 1.25, 0);
+  return mergeGeos([body, win]);
+})();
+const busMat = new THREE.MeshLambertMaterial({ color: 0x2e9e6b });
+const N_BUS = IS_MOBILE ? 2 : 3;
+const buses = [];
+let busMesh = null;
+function initBuses() {
+  // rectangular loop on the outermost roads (k=0 line has no traffic lights, simple loop)
+  for (let i = 0; i < N_BUS; i++) buses.push({ t: i / N_BUS, speed: 0.004 + Math.random() * 0.001 });
+  busMesh = new THREE.InstancedMesh(busGeo, busMat, N_BUS);
+  busMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(busMesh);
+}
+initBuses();
+const LOOP_MIN = -HALF + 0 * CFG.pitch + 1.9, LOOP_MAX = -HALF + CFG.blocks * CFG.pitch - 1.9;
+const LOOP_LEN = 2 * (LOOP_MAX - LOOP_MIN) * 2;
+function busPos(t) {
+  // t in [0,1) around the rectangle loop (clockwise)
+  const d = ((t % 1) + 1) % 1 * LOOP_LEN;
+  const side = (LOOP_MAX - LOOP_MIN);
+  if (d < side) return { x: LOOP_MIN + d, z: LOOP_MIN, rot: 0 };
+  if (d < side * 2) return { x: LOOP_MAX, z: LOOP_MIN + (d - side), rot: -Math.PI / 2 };
+  if (d < side * 3) return { x: LOOP_MAX - (d - side * 2), z: LOOP_MAX, rot: Math.PI };
+  return { x: LOOP_MIN, z: LOOP_MAX - (d - side * 3), rot: Math.PI / 2 };
+}
+function updateBuses(dtReal) {
+  if (!busMesh) return;
+  for (let i = 0; i < buses.length; i++) {
+    const b = buses[i];
+    b.t += b.speed * dtReal;
+    const p = busPos(b.t);
+    _v.set(p.x, 0.1, p.z); _q.setFromAxisAngle(_UP, p.rot); _s.set(1, 1, 1);
+    _m4.compose(_v, _q, _s);
+    busMesh.setMatrixAt(i, _m4);
+  }
+  busMesh.instanceMatrix.needsUpdate = true;
 }
 
 // ============================== Traffic lights ==============================
@@ -1011,6 +1065,8 @@ function updateLighting() {
     m.emissiveIntensity += ((glow ? 0.85 : 0) - m.emissiveIntensity) * 0.06;
   }
   lampHeadMat.color.setHex(glow ? 0xffd57a : 0x555a60);
+  const showSigns = nightGlow > 0.5;
+  for (const s of shopSigns) s.visible = showSigns;
 }
 
 // ============================== Economy ==============================
@@ -1332,6 +1388,7 @@ function animate() {
   updateLighting();
   renderCitizens();
   renderCars();
+  updateBuses(dtReal * state.speed);
 
   // clock display
   const hh = Math.floor(state.hour), mm = Math.floor((state.hour - hh) * 60);
