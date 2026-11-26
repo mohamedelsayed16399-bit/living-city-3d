@@ -5857,6 +5857,112 @@ function updateZooCorner(dtReal) {
 }
 initZooCorner();
 
+// R73: garbage truck (عربية الزبالة) morning route 5-9h on east-side roads, stops to lift bins, 2 workers
+let garbageTruck = null;
+function initGarbageTruck() {
+  if (garbageTruck) return;
+  // route: rectangle x=13/x=65, z=-91..91
+  const route = [];
+  for (let z = -91; z <= 91; z += 3.25) route.push([13, z]);
+  for (let x = 13; x <= 65; x += 3.25) route.push([x, 91]);
+  for (let z = 91; z >= -91; z -= 3.25) route.push([65, z]);
+  for (let x = 65; x >= 13; x -= 3.25) route.push([x, -91]);
+  // truck body
+  const truck = new THREE.Group();
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.5, 2.0), new THREE.MeshLambertMaterial({ color: 0xe8641e }));
+  cab.position.set(0, 1.15, 1.9);
+  const cabGlass = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 0.15), new THREE.MeshLambertMaterial({ color: 0x9fd4ff }));
+  cabGlass.position.set(0, 1.45, 2.85);
+  const boxBody = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.9, 3.4), new THREE.MeshLambertMaterial({ color: 0x3f7a35 }));
+  boxBody.position.set(0, 1.35, -0.6);
+  const hatch = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.25), new THREE.MeshLambertMaterial({ color: 0x2d5a26 }));
+  hatch.position.set(0, 1.1, -2.35);
+  truck.add(cab, cabGlass, boxBody, hatch);
+  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x222228 });
+  for (const [wx, wz] of [[-0.85, 1.9], [0.85, 1.9], [-0.85, -1.4], [0.85, -1.4]]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 10), wheelMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(wx, 0.42, wz);
+    truck.add(w);
+  }
+  truck.visible = false;
+  scene.add(truck);
+  // two workers in orange vests
+  const workers = [];
+  for (let i = 0; i < 2; i++) {
+    const p = new THREE.Group();
+    const vest = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: 0xff7a1a, emissive: 0x542200 }));
+    vest.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: 0xa8763e }));
+    head.position.y = 1.15;
+    p.add(vest, head);
+    p.visible = false;
+    scene.add(p);
+    workers.push(p);
+  }
+  // bins along the route (on x=13 and x=65 edges)
+  const bins = [];
+  const binMat = new THREE.MeshLambertMaterial({ color: 0x2f6f4f });
+  for (let i = 0; i < 14; i++) {
+    const onWest = i % 2 === 0;
+    const bx = (onWest ? 13 : 65) + (onWest ? -3.4 : 3.4);
+    const bz = -78 + i * 12;
+    const bin = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.9), binMat);
+    bin.position.set(bx, 0.55, bz);
+    scene.add(bin);
+    bins.push(bin);
+  }
+  garbageTruck = { truck, workers, bins, route, seg: 0, t: 0, stopT: 0, toastedDay: -1 };
+}
+function updateGarbageTruck(dtReal) {
+  if (!garbageTruck) return;
+  const g = garbageTruck;
+  g.t += dtReal;
+  const h = state.hour;
+  const active = h >= 5 && h < 9;
+  g.truck.visible = active;
+  for (const w of g.workers) w.visible = active;
+  if (!active) return;
+  if (g.toastedDay !== state.day && h >= 5 && h < 5.2) {
+    g.toastedDay = state.day;
+    toast('🚛 عربية الزبالة بدأت جولتها الصبح — الشوارع بتتنضف!');
+  }
+  const R = g.route;
+  const stopping = g.stopT > 0;
+  if (stopping) {
+    g.stopT -= dtReal;
+    // worker 1 walks to nearest bin and back, worker 2 stays at hatch
+    const tx = g.truck.position.x, tz = g.truck.position.z;
+    const k = 1 - Math.max(0, g.stopT) / 3;
+    const swing = Math.sin(k * Math.PI);
+    let best = null, bd = 1e9;
+    for (const b of g.bins) {
+      const d = (b.position.x - tx) ** 2 + (b.position.z - tz) ** 2;
+      if (d < bd) { bd = d; best = b; }
+    }
+    if (best) {
+      g.workers[0].position.set(tx + (best.position.x - tx) * swing, 0, tz + (best.position.z - tz) * swing);
+      best.rotation.x = swing > 0.85 ? -0.9 : 0;
+    }
+    g.workers[1].position.set(tx, 0, tz - 2.8);
+  } else {
+    g.seg = (g.seg + dtReal * 0.55) % R.length;
+    const i0 = Math.floor(g.seg), i1 = (i0 + 1) % R.length;
+    const f = g.seg - i0;
+    const x = R[i0][0] + (R[i1][0] - R[i0][0]) * f;
+    const z = R[i0][1] + (R[i1][1] - R[i0][1]) * f;
+    g.truck.position.set(x, 0, z);
+    g.truck.rotation.y = Math.atan2(R[i1][0] - R[i0][0], R[i1][1] - R[i0][1]);
+    // ride along
+    g.workers[0].position.set(x - 1.4, 0.9, z);
+    g.workers[1].position.set(x + 1.4, 0.9, z);
+    // stop near every ~7th waypoint
+    if (i0 % 7 === 0 && f < 0.1) g.stopT = 3;
+  }
+}
+initGarbageTruck();
+
+
 
 
 
@@ -6088,6 +6194,7 @@ function animate() {
   updateStreetFootball(dtReal);
   updateBookFair(dtReal);
   updateZooCorner(dtReal);
+  updateGarbageTruck(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
