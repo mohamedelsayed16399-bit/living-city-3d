@@ -3751,6 +3751,122 @@ function updateFireStation(dtReal) {
 }
 initFireStation();
 
+// R51: pigeon loft (برج حمام) near the stadium — flock circles it at dusk
+let pigeonLoft = null;
+function initPigeonLoft() {
+  if (pigeonLoft) return;
+  const PX = -32, PZ = 127;
+  const grp = new THREE.Group();
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.6, 7.5, 12), new THREE.MeshLambertMaterial({ color: 0xb8966a }));
+  tower.position.set(PX, 3.75, PZ);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(2.2, 1.6, 12), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+  cap.position.set(PX, 8.3, PZ);
+  grp.add(tower, cap);
+  // holes pattern (dark instanced dots on the upper half)
+  const holeG = new THREE.CircleGeometry(0.16, 6);
+  const holeM = new THREE.MeshBasicMaterial({ color: 0x4a3a26 });
+  const holes = new THREE.InstancedMesh(holeG, holeM, 18);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(), V = new THREE.Vector3(), SC = new THREE.Vector3(1, 1, 1);
+  for (let i = 0; i < 18; i++) {
+    const a = i / 18 * Math.PI * 2, r = 2.05;
+    E.set(0, a + Math.PI / 2, 0); Q.setFromEuler(E);
+    V.set(PX + Math.cos(a) * r, 5.2 + (i % 3) * 0.9, PZ + Math.sin(a) * r);
+    M.compose(V, Q, SC); holes.setMatrixAt(i, M);
+  }
+  grp.add(holes);
+  scene.add(grp);
+  // the flock: low tight circles at dusk
+  const pigeons = [];
+  const bodyG = new THREE.SphereGeometry(0.16, 6, 5);
+  const wingG = new THREE.BoxGeometry(0.5, 0.03, 0.2);
+  for (let i = 0; i < 12; i++) {
+    const p = new THREE.Group();
+    const body = new THREE.Mesh(bodyG, new THREE.MeshLambertMaterial({ color: i % 3 ? 0xcfcfcf : 0x8a8f98 }));
+    const w1 = new THREE.Mesh(wingG, new THREE.MeshLambertMaterial({ color: 0xb8b8b8 }));
+    const w2 = new THREE.Mesh(wingG, new THREE.MeshLambertMaterial({ color: 0xb8b8b8 }));
+    w1.position.x = -0.28; w2.position.x = 0.28;
+    p.add(body, w1, w2);
+    p.userData = { ph: i / 12 * Math.PI * 2, r: 5.5 + (i % 4) * 1.6, h: 8.5 + (i % 5) * 1.3, sp: 0.9 + (i % 3) * 0.25, w1, w2 };
+    p.visible = false;
+    scene.add(p);
+    pigeons.push(p);
+  }
+  pigeonLoft = { grp, pigeons, t: 0, x: PX, z: PZ };
+}
+function updatePigeonLoft(dtReal) {
+  if (!pigeonLoft) return;
+  pigeonLoft.t += dtReal;
+  const h = state.hour;
+  const flying = h >= 16.5 && h < 19;
+  for (const p of pigeonLoft.pigeons) {
+    p.visible = flying;
+    if (!flying) continue;
+    const u = p.userData;
+    const a = pigeonLoft.t * u.sp + u.ph;
+    p.position.set(pigeonLoft.x + Math.cos(a) * u.r, u.h + Math.sin(a * 2.3) * 0.5, pigeonLoft.z + Math.sin(a) * u.r);
+    p.rotation.y = -a;
+    const flap = Math.sin(pigeonLoft.t * 10 + u.ph) * 0.5;
+    u.w1.rotation.z = 0.35 + flap; u.w2.rotation.z = -0.35 - flap;
+  }
+}
+initPigeonLoft();
+
+// R52: Nile fishermen in rowboats at dawn (5-10am), casting net rings
+let fishermen = null;
+function initFishermen() {
+  if (fishermen) return;
+  const boats = [];
+  const hullG = new THREE.CylinderGeometry(0.55, 0.75, 2.6, 8, 1);
+  for (let i = 0; i < 3; i++) {
+    const b = new THREE.Group();
+    const hull = new THREE.Mesh(hullG, new THREE.MeshLambertMaterial({ color: 0x6e5232 }));
+    hull.rotation.x = Math.PI / 2;
+    hull.position.y = 0.15;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.09, 6, 10), new THREE.MeshLambertMaterial({ color: 0x543f26 }));
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.3;
+    const man = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.6, 6), new THREE.MeshLambertMaterial({ color: 0xe8e0cc }));
+    man.position.set(0, 0.6, -0.5);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshLambertMaterial({ color: 0xa8763e }));
+    head.position.set(0, 1.05, -0.5);
+    const net = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 6, 16), new THREE.MeshBasicMaterial({ color: 0xd8d2c0, transparent: true, opacity: 0.8 }));
+    net.rotation.x = Math.PI / 2;
+    net.visible = false;
+    scene.add(net);
+    b.add(hull, rim, man, head);
+    b.visible = false;
+    scene.add(b);
+    boats.push({ g: b, net, zBase: 30 + i * 24, ph: Math.random() * 6, castT: 3 + i * 4 });
+  }
+  fishermen = { boats, t: 0 };
+}
+function updateFishermen(dtReal) {
+  if (!fishermen) return;
+  fishermen.t += dtReal;
+  const h = state.hour;
+  const out = h >= 5 && h < 10;
+  for (const f of fishermen.boats) {
+    f.g.visible = out;
+    if (!out) { f.net.visible = false; continue; }
+    const z = f.zBase + Math.sin(fishermen.t * 0.08 + f.ph) * 6;
+    const drift = Math.sin(fishermen.t * 0.5 + f.ph) * 0.06;
+    f.g.position.set(RIVER_X - 3.4 + drift, 0.15 + Math.sin(fishermen.t * 1.1 + f.ph) * 0.05, z);
+    f.g.rotation.y = Math.PI + Math.sin(fishermen.t * 0.2 + f.ph) * 0.4;
+    // net cast cycle: appear small, expand, sink, fade
+    f.castT -= dtReal;
+    if (f.castT <= 0) f.castT = 7 + Math.random() * 5;
+    const ct = 7 - f.castT;
+    if (ct > 0 && ct < 2.4) {
+      f.net.visible = true;
+      const k = ct / 2.4;
+      f.net.scale.set(0.3 + k * 2.2, 0.3 + k * 2.2, 1);
+      f.net.position.set(f.g.position.x + 1.6, 0.32 - k * 0.25, z + 0.8);
+      f.net.material.opacity = 0.8 * (1 - k);
+    } else f.net.visible = false;
+  }
+}
+initFishermen();
+
 updateDayTxt();
 initPalms();
 initKites();
@@ -3906,6 +4022,8 @@ function animate() {
   updateRiverBillboard(dtReal);
   updateCornicheLife(dtReal);
   updateFireStation(dtReal);
+  updatePigeonLoft(dtReal);
+  updateFishermen(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
