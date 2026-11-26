@@ -525,6 +525,7 @@ function placeBuilding(type, key, silent) {
   state.plots.set(key, { type, mesh, pop: bt.pop, jobs: bt.jobs });
   if (!silent) {
     recalcStats();
+    buildBalconyInstances();
     mesh.scale.y = 0.03;
     buildAnims.push({ mesh, t: 0, h: mesh.userData.h });
   }
@@ -541,6 +542,7 @@ function removeBuilding(key) {
   if (rec.trees) removeTreesOf(key);
   state.plots.delete(key);
   recalcStats();
+  buildBalconyInstances();
   return true;
 }
 
@@ -1339,6 +1341,47 @@ function updateFelucca(dtReal) {
   felucca.rotation.z = Math.sin(perfT * 1.1) * 0.04;
 }
 
+// ============================== Balconies (single InstancedMesh, rebuilt on change) ==============================
+let balconyMesh = null;
+const balconyGeo = (() => {
+  const slab = new THREE.BoxGeometry(1.5, 0.1, 0.65); slab.translate(0, 0, 0.32);
+  const railF = new THREE.BoxGeometry(1.5, 0.5, 0.06); railF.translate(0, 0.3, 0.62);
+  const railL = new THREE.BoxGeometry(0.06, 0.5, 0.65); railL.translate(-0.72, 0.3, 0.32);
+  const railR = new THREE.BoxGeometry(0.06, 0.5, 0.65); railR.translate(0.72, 0.3, 0.32);
+  return mergeGeos([slab, railF, railL, railR]);
+})();
+const balconyMat = new THREE.MeshLambertMaterial({ color: 0x5a5044 });
+function buildBalconyInstances() {
+  if (balconyMesh) { scene.remove(balconyMesh); balconyMesh.dispose && balconyMesh.dispose(); balconyMesh = null; }
+  const out = [];
+  for (const [key, rec] of state.plots) {
+    if (!rec.mesh || !rec.mesh.userData || !rec.mesh.userData.h) continue;
+    const m = rec.mesh, type = m.userData.type;
+    if (type !== 'house' && type !== 'office') continue;
+    const h = m.userData.h;
+    const w = m.geometry.parameters.width, d = m.geometry.parameters.depth;
+    const rot = m.rotation.y || 0, cos = Math.cos(rot), sin = Math.sin(rot);
+    const n = h > 13 ? 2 : 1;
+    for (let b = 0; b < n; b++) {
+      const fy = Math.min(h - 1.8, 2.6 + b * 3.4);
+      const lx = ((key.length * 7 + b * 13) % 10 / 10 - 0.5) * w * 0.45;
+      const ox = lx * cos + (d / 2) * sin;
+      const oz = -lx * sin + (d / 2) * cos;
+      out.push({ x: m.position.x + ox, y: fy, z: m.position.z + oz, ry: rot });
+    }
+  }
+  if (!out.length) return;
+  balconyMesh = new THREE.InstancedMesh(balconyGeo, balconyMat, out.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  for (let i = 0; i < out.length; i++) {
+    q.setFromAxisAngle(UP, out[i].ry);
+    v.set(out[i].x, out[i].y, out[i].z);
+    m4.compose(v, q, s);
+    balconyMesh.setMatrixAt(i, m4);
+  }
+  scene.add(balconyMesh);
+}
+
 // ============================== Economy ==============================
 let dayAcc = 0;
 function updateEconomy(dtGameHours) {
@@ -1836,6 +1879,7 @@ buildBusStops();
 buildStalls();
 seedCity();
 buildClockTower();
+buildBalconyInstances();
 recalcStats();
 
 // citizens init after city exists
