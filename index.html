@@ -5511,6 +5511,104 @@ function updateCinema(dtReal) {
 }
 initCinema();
 
+// R70: street football (ملعب كورة شوارع) on the east strip — sandy pitch, brick goals, floodlights, evening match
+let streetFootball = null;
+function initStreetFootball() {
+  if (streetFootball) return;
+  const PX = 128, PZ = -78;
+  const grp = new THREE.Group();
+  // sandy pitch with white lines
+  const pitch = new THREE.Mesh(new THREE.BoxGeometry(12, 0.18, 20), new THREE.MeshLambertMaterial({ color: 0xd9b57a }));
+  pitch.position.set(PX, 0.09, PZ);
+  grp.add(pitch);
+  const lineM = new THREE.MeshBasicMaterial({ color: 0xf2f2ee });
+  const mid = new THREE.Mesh(new THREE.PlaneGeometry(11.6, 0.25), lineM);
+  mid.rotation.x = -Math.PI / 2; mid.position.set(PX, 0.19, PZ);
+  grp.add(mid);
+  const circle = new THREE.Mesh(new THREE.RingGeometry(1.4, 1.6, 20), lineM);
+  circle.rotation.x = -Math.PI / 2; circle.position.set(PX, 0.19, PZ);
+  grp.add(circle);
+  // brick goals at both ends (classic street bricks)
+  for (const gz of [PZ - 9.4, PZ + 9.4]) {
+    for (const gx of [-1.8, 1.8]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.5), new THREE.MeshLambertMaterial({ color: 0xa8442e }));
+      post.position.set(PX + gx, 0.55, gz);
+      grp.add(post);
+    }
+  }
+  // fence + floodlight poles
+  const floodBulbs = [];
+  for (const [fx, fz] of [[-6.2, -9.8], [6.2, -9.8], [-6.2, 9.8], [6.2, 9.8]]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 5.2, 6), new THREE.MeshLambertMaterial({ color: 0x4a4f58 }));
+    pole.position.set(PX + fx, 2.6, PZ + fz);
+    const headB = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.3), new THREE.MeshLambertMaterial({ color: 0x6b7280 }));
+    headB.position.set(PX + fx, 5.2, PZ + fz);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x8a8f98 }));
+    bulb.position.set(PX + fx, 5.05, PZ + fz);
+    grp.add(pole, headB, bulb);
+    floodBulbs.push(bulb);
+  }
+  // sign
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 48;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#2e5d3a'; g.fillRect(0, 0, 256, 48);
+  g.fillStyle = '#f0e8c8'; g.font = 'bold 30px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('ملعب الحارة ⚽', 128, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.0), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(PX - 6.3, 2.6, PZ);
+  sign.rotation.y = -Math.PI / 2;
+  grp.add(sign);
+  scene.add(grp);
+  // two teams of 4 + ball
+  const players = [];
+  const teamCols = [0xe84545, 0x2f9de8];
+  for (let i = 0; i < 8; i++) {
+    const team = i < 4 ? 0 : 1;
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.65, 6), new THREE.MeshLambertMaterial({ color: teamCols[team] }));
+    shirt.position.y = 0.55;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: [0xc89b6d, 0xa8763e, 0x8a5a2b][i % 3] }));
+    head.position.y = 1.05;
+    p.add(shirt, head);
+    p.userData = { team, slot: i % 4, ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    players.push(p);
+  }
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  ball.visible = false;
+  scene.add(ball);
+  streetFootball = { grp, players, ball, floodBulbs, t: 0, toastedDay: -1, PX, PZ };
+}
+function updateStreetFootball(dtReal) {
+  if (!streetFootball) return;
+  const s = streetFootball;
+  s.t += dtReal;
+  const h = state.hour;
+  const match = h >= 17 && h < 22;
+  const lit = h >= 17.5 || h < 5;
+  for (const b of s.floodBulbs) b.material.color.setHex(lit ? 0xfff2c0 : 0x8a8f98);
+  if (match && s.toastedDay !== state.day) {
+    s.toastedDay = state.day;
+    toast('⚽ ماتش الحارة ابتدى في ملعب النخيل — جون!');
+  }
+  s.ball.visible = match;
+  for (const p of s.players) {
+    p.visible = match;
+    if (!match) continue;
+    const u = p.userData;
+    // ball moves midfield back and forth; players swarm around it
+    const bk = Math.sin(s.t * 0.55);
+    const bx = s.PX + Math.sin(s.t * 1.3 + u.slot) * 2.2;
+    const bz = s.PZ + bk * 6 + (u.team === 0 ? -1.5 : 1.5) + Math.cos(s.t * 1.1 + u.ph) * 1.4;
+    p.position.set(bx, 0.2, bz);
+    p.rotation.y = Math.atan2(s.PX + Math.sin(s.t * 1.3) * 2.2 - bx, s.PZ + bk * 6 - bz);
+    if (u.slot === 0) s.ball.position.set(bx + Math.sin(s.t * 3) * 0.4, 0.28, bz + Math.cos(s.t * 3) * 0.4);
+  }
+}
+initStreetFootball();
+
+
 
 
 
@@ -5736,6 +5834,7 @@ function animate() {
   updateFishMarket(dtReal);
   updateAhwa(dtReal);
   updateCinema(dtReal);
+  updateStreetFootball(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
