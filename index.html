@@ -5405,6 +5405,113 @@ function updateAhwa(dtReal) {
 }
 initAhwa();
 
+// R69: cinema Rivoli (سينما ريفولي) on the east strip — chasing marquee lights, poster boards, evening queue
+let cinema = null;
+function initCinema() {
+  if (cinema) return;
+  const CX = 128, CZ = -52;
+  const grp = new THREE.Group();
+  // facade
+  const face = new THREE.Mesh(new THREE.BoxGeometry(12, 9, 6), new THREE.MeshLambertMaterial({ color: 0x8a3a4a }));
+  face.position.set(CX + 2.5, 4.5, CZ);
+  grp.add(face);
+  // entrance: dark doors + red carpet
+  const doors = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.0), new THREE.MeshLambertMaterial({ color: 0x2a1a1e }));
+  doors.position.set(CX - 3.51, 1.5, CZ);
+  doors.rotation.y = -Math.PI / 2;
+  const carpet = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.06, 2.4), new THREE.MeshLambertMaterial({ color: 0xb31b1b }));
+  carpet.position.set(CX - 6.2, 0.06, CZ);
+  grp.add(doors, carpet);
+  // horizontal marquee over the entrance
+  const marq = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 5.4), new THREE.MeshLambertMaterial({ color: 0xf2e8c9 }));
+  marq.position.set(CX - 4.2, 3.8, CZ);
+  grp.add(marq);
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#b31b3b'; g.fillRect(0, 0, 256, 64);
+  g.fillStyle = '#ffe9a8'; g.font = 'bold 36px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('سينما ريفولي 🎬', 128, 34);
+  const marqSign = new THREE.Mesh(new THREE.PlaneGeometry(5.0, 1.25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  marqSign.position.set(CX - 5.15, 3.8, CZ);
+  marqSign.rotation.y = -Math.PI / 2;
+  grp.add(marqSign);
+  // chasing bulbs around the marquee edge
+  const chase = [];
+  for (let i = 0; i < 14; i++) {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffd75a }));
+    const k = i / 14;
+    b.position.set(CX - 5.15, 3.15 + (i % 2) * 1.3, CZ - 2.4 + k * 4.8);
+    grp.add(b); chase.push(b);
+  }
+  // vertical rooftop sign
+  const vSign = new THREE.Mesh(new THREE.BoxGeometry(1.1, 6.5, 0.7), new THREE.MeshLambertMaterial({ color: 0xb31b3b }));
+  vSign.position.set(CX + 2.5, 11.5, CZ + 2.2);
+  grp.add(vSign);
+  const cv2 = document.createElement('canvas'); cv2.width = 64; cv2.height = 256;
+  const g2 = cv2.getContext('2d');
+  g2.fillStyle = '#b31b3b'; g2.fillRect(0, 0, 64, 256);
+  g2.fillStyle = '#ffe9a8'; g2.font = 'bold 40px Tahoma'; g2.textAlign = 'center';
+  const word = 'ريفولي';
+  for (let i = 0; i < word.length; i++) g2.fillText(word[i], 32, 40 + i * 42);
+  for (const s of [-0.36, 0.36]) {
+    const vs = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 6.4), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), side: THREE.DoubleSide }));
+    vs.position.set(CX + 2.5 + s, 11.5, CZ + 2.2 + (s < 0 ? -0.01 : 0.01));
+    vs.rotation.y = s < 0 ? Math.PI : 0;
+    grp.add(vs);
+  }
+  // poster boards on the facade
+  const posters = [0x2f9de8, 0xf2c020];
+  posters.forEach((pc, i) => {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.2), new THREE.MeshLambertMaterial({ color: pc }));
+    p.position.set(CX - 3.51, 1.7, CZ - 2.4 + i * 4.8);
+    p.rotation.y = -Math.PI / 2;
+    grp.add(p);
+  });
+  scene.add(grp);
+  // evening queue
+  const queue = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 7; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.45, 0.5) }));
+    shirt.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i % 3] }));
+    head.position.y = 1.15;
+    p.add(shirt, head);
+    p.userData = { slot: i, ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    queue.push(p);
+  }
+  cinema = { grp, chase, queue, t: 0, toastedDay: -1, CX, CZ };
+}
+function updateCinema(dtReal) {
+  if (!cinema) return;
+  const c = cinema;
+  c.t += dtReal;
+  const h = state.hour;
+  const night = h >= 17.5 || h < 5;
+  // chasing marquee bulbs
+  c.chase.forEach((b, i) => {
+    const on = Math.floor(c.t * 4 + i) % 3 !== 0;
+    b.material.color.setHex(night ? (on ? 0xffd75a : 0x7a5a1a) : 0xd8c89a);
+  });
+  const show = h >= 18.5 && h < 23;
+  if (show && c.toastedDay !== state.day) {
+    c.toastedDay = state.day;
+    toast('🎬 حفلة التمنية في سينما ريفولي — الشبابيك قفلت!');
+  }
+  for (const p of c.queue) {
+    p.visible = show;
+    if (!show) continue;
+    const u = p.userData;
+    p.position.set(c.CX - 5.6 - (u.slot % 2) * 0.8 + Math.sin(c.t + u.ph) * 0.08, 0.1, c.CZ - 2.2 + u.slot * 0.75);
+    p.rotation.y = Math.PI / 2;
+  }
+}
+initCinema();
+
+
 
 
 
@@ -5628,6 +5735,7 @@ function animate() {
   updateLevelCrossing(dtReal);
   updateFishMarket(dtReal);
   updateAhwa(dtReal);
+  updateCinema(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
