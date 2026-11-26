@@ -1601,6 +1601,46 @@ function buildBalconyInstances() {
   scene.add(balconyMesh);
 }
 
+// R23: festive string lights across the main streets (instanced, glowing)
+function initStringLights() {
+  const bulbG = new THREE.SphereGeometry(0.11, 5, 4);
+  const bulbs = [];
+  const FEST = [0xff5544, 0xffd94d, 0x5aff7a, 0x5ab8ff, 0xff8ae2];
+  // strings cross the 3 central horizontal roads + the 2 central vertical roads
+  const lines = [];
+  for (const k of [3, 4, 5]) lines.push({ horiz: true, line: -HALF + k * CFG.pitch });
+  for (const k of [3, 5]) if (k !== RIVER_K) lines.push({ horiz: false, line: -HALF + k * CFG.pitch });
+  const span = CFG.roadW / 2 + 1.1;
+  for (const L of lines) {
+    for (let t = -HALF + 13; t < HALF - 10; t += 13) {
+      // skip strings that would cross the river
+      if (L.horiz && Math.abs(t - RIVER_X) < 12) continue;
+      for (let b = 0; b <= 8; b++) {
+        const u = b / 8;                       // 0..1 across the road
+        const sag = Math.sin(u * Math.PI) * 0.9;
+        const y = 5.6 - sag;
+        let x, z;
+        if (L.horiz) { x = t; z = L.line - span + u * span * 2; }
+        else { x = L.line - span + u * span * 2; z = t; }
+        bulbs.push({ x, y, z, c: FEST[(bulbs.length) % FEST.length] });
+      }
+    }
+  }
+  if (!bulbs.length) return;
+  const mesh = new THREE.InstancedMesh(bulbG, new THREE.MeshBasicMaterial({ color: 0xffffff }), bulbs.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
+  const col = new THREE.Color();
+  for (let i = 0; i < bulbs.length; i++) {
+    v.set(bulbs[i].x, bulbs[i].y, bulbs[i].z);
+    m4.compose(v, q, s);
+    mesh.setMatrixAt(i, m4);
+    mesh.setColorAt(i, col.setHex(bulbs[i].c));
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  scene.add(mesh);
+}
+initStringLights();
+
 // R21: clotheslines with hanging laundry on house fronts (instanced + sway)
 let clothesLineMesh = null, clothMesh = null;
 const clothData = [];
@@ -2262,7 +2302,7 @@ function initBenches() {
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
-window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark,
+window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
