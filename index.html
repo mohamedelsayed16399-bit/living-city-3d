@@ -1832,6 +1832,34 @@ function updateShowFountain(dtReal) {
   });
 }
 
+// R41: rainbow arcs over the river for a while after the rain stops
+const rainbow = (() => {
+  const grp = new THREE.Group();
+  const cols = [0xff3b30, 0xff9500, 0xffd60a, 0x34c759, 0x32ade6, 0x5856d6, 0xaf52de];
+  const mats = [];
+  cols.forEach((c, i) => {
+    const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0, depthWrite: false, fog: false });
+    mats.push(m);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(58 + i * 2.2, 1.1, 6, 60, Math.PI), m);
+    grp.add(band);
+  });
+  grp.position.set(RIVER_X + 10, 0, -70);
+  grp.visible = false;
+  scene.add(grp);
+  return { grp, mats };
+})();
+const rainbowState = { t: 0, prevWeather: state.weather };
+function updateRainbow(dtReal) {
+  if (rainbowState.prevWeather === 'rain' && state.weather !== 'rain') rainbowState.t = 260;
+  rainbowState.prevWeather = state.weather;
+  if (rainbowState.t <= 0) { rainbow.grp.visible = false; return; }
+  rainbowState.t -= dtReal;
+  const t = rainbowState.t;
+  const fade = Math.min(1, (260 - t) / 12, t / 20);
+  rainbow.grp.visible = fade > 0.01;
+  for (const m of rainbow.mats) m.opacity = 0.42 * Math.max(0, fade);
+}
+
 // R36: elevated metro line with a running train and 2 stations
 const METRO_X = 39; // above the x=39 road, Cairo-metro style
 const metroStations = [-39, 39];
@@ -3240,6 +3268,7 @@ function animate() {
   updateFerry(dtReal);
   updateConvoy(dtReal);
   updateShowFountain(dtReal);
+  updateRainbow(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
