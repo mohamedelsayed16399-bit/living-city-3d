@@ -269,6 +269,28 @@ function makeGroundTexture() {
     g.beginPath(); g.moveTo(0, W(x)); g.lineTo(S, W(x)); g.stroke();
   }
   g.setLineDash([]);
+  // zebra crosswalks at intersections (skip the river line)
+  g.fillStyle = 'rgba(240,238,228,0.85)';
+  for (let k = 0; k <= CFG.blocks; k++) {
+    if (k === RIVER_K) continue;
+    for (let m = 0; m <= CFG.blocks; m++) {
+      if (m === RIVER_K) continue;
+      const cx = W(-HALF + k * CFG.pitch), cz = W(-HALF + m * CFG.pitch);
+      const stripeW = 0.35 * w2c, stripeL = 1.7 * w2c, gap = 0.7 * w2c;
+      const out = rw / 2 + stripeL * 0.6;
+      // crossings across the horizontal road, above and below the intersection
+      for (const side of [-1, 1]) {
+        const y0 = cz + side * out - stripeL / 2;
+        for (let i = -2; i <= 2; i++) g.fillRect(cx + i * gap - stripeW / 2, y0, stripeW, stripeL);
+      }
+      // crossings across the vertical road, left and right of the intersection
+      for (const side of [-1, 1]) {
+        const x0 = cx + side * out - stripeL / 2;
+        for (let i = -2; i <= 2; i++) g.fillRect(x0, cz + i * gap - stripeW / 2, stripeL, stripeW);
+      }
+    }
+  }
+  g.setLineDash([]);
   const tex = new THREE.CanvasTexture(c);
   tex.anisotropy = 4;
   return tex;
@@ -1188,7 +1210,10 @@ const stars = (() => {
 function updateLighting() {
   const s = skyFor(state.hour);
   const dim = state.weather === 'rain' ? 0.55 : state.weather === 'cloudy' ? 0.78 : 1;
-  scene.background.copy(s.sky).multiplyScalar(dim);
+  scene.background = null;
+  skyDome.material.uniforms.top.value.copy(s.sky).multiplyScalar(dim * 0.8);
+  skyDome.material.uniforms.bottom.value.copy(s.fog).multiplyScalar(dim * 1.06);
+  skyDome.position.set(camera.position.x, 0, camera.position.z);
   scene.fog.color.copy(s.fog).multiplyScalar(dim);
   hemi.intensity = s.hemi * dim;
   const isNight = s.sun < 0.06;
@@ -1266,6 +1291,22 @@ function updateBirds(dtReal) {
   }
   birdMesh.instanceMatrix.needsUpdate = true;
 }
+
+// gradient sky dome (zenith -> horizon), colors updated in updateLighting
+const skyDome = (() => {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(0x87b5e0) }, bottom: { value: new THREE.Color(0xa8c8e8) } },
+    vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vP;' +
+      'void main(){ float t = clamp(normalize(vP).y * 1.6 + 0.12, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, pow(t, 0.75)), 1.0); }'
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(560, 20, 12), mat);
+  mesh.renderOrder = -1;
+  scene.add(mesh);
+  return mesh;
+})();
+scene.background = null;
 
 // felucca sailing up and down the river
 const felucca = (() => {
