@@ -363,6 +363,40 @@ function facadeMats(type, floors) {
 const roofMat = new THREE.MeshLambertMaterial({ color: 0x5a5f6a });
 const signMat = new THREE.MeshBasicMaterial({ color: 0x36e0a8 });
 const shopSigns = [];
+// R17: real Arabic storefront signs (lit all day like Egyptian streets)
+const SHOP_SIGN_DEFS = [
+  { name: 'كشري التحرير', bg: '#c2272d', fg: '#ffe9a8' },
+  { name: 'عصير قصب', bg: '#1f7a3d', fg: '#ffffff' },
+  { name: 'صيدلية الشفاء', bg: '#0d5fa8', fg: '#ffffff' },
+  { name: 'مخبز بلدي', bg: '#b5651d', fg: '#fff3d6' },
+  { name: 'محل بقالة', bg: '#e0a91c', fg: '#33260a' },
+  { name: 'كافيه النيل', bg: '#4a2c14', fg: '#f5e0b8' },
+  { name: 'حلاق رجالي', bg: '#26303a', fg: '#e8e8e8' },
+  { name: 'موبايلات ستار', bg: '#6a1fb5', fg: '#ffffff' },
+  { name: 'سوبر ماركت', bg: '#d42a7a', fg: '#ffffff' },
+  { name: 'خضار وفاكهة', bg: '#2f8f2f', fg: '#f0ffe0' },
+  { name: 'فول وطعمية', bg: '#8a2f12', fg: '#ffe9a8' },
+  { name: 'مكتبة المعرفة', bg: '#155e63', fg: '#ffffff' }
+];
+const shopSignTexCache = [];
+function shopSignMaterials(idx) {
+  if (shopSignTexCache[idx]) return shopSignTexCache[idx];
+  const def = SHOP_SIGN_DEFS[idx];
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 96;
+  const g = cv.getContext('2d');
+  g.fillStyle = def.bg; g.fillRect(0, 0, 512, 96);
+  g.strokeStyle = 'rgba(255,255,255,0.65)'; g.lineWidth = 6; g.strokeRect(5, 5, 502, 86);
+  g.fillStyle = def.fg; g.font = 'bold 56px sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(def.name, 256, 52);
+  const tex = new THREE.CanvasTexture(cv);
+  const lit = new THREE.MeshBasicMaterial({ map: tex });
+  const edge = new THREE.MeshLambertMaterial({ color: 0x2a2a2e });
+  const mats = [edge, edge, edge, edge, lit, edge];
+  shopSignTexCache[idx] = mats;
+  return mats;
+}
 
 const BUILD_TYPES = {
   house:  { hMin: 3.2, hMax: 5.5, floors: 2, pop: 4, jobs: 0, label: 'بيت' },
@@ -475,9 +509,9 @@ function createBuildingMesh(type, x, z) {
     mesh.add(pole, flag);
   }
   if (type === 'shop') {
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 0.5, 0.15), signMat);
-    sign.position.set(0, h / 2 - 1.2, d / 2 + 0.1);
-    sign.visible = false;
+    const si = Math.abs(Math.floor(x * 7 + z * 13)) % SHOP_SIGN_DEFS.length;
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.85, 0.85, 0.18), shopSignMaterials(si));
+    sign.position.set(0, -h / 2 + 2.6, d / 2 + 0.12); // above the ground-floor entrance
     mesh.add(sign);
     shopSigns.push(sign);
   }
@@ -1278,8 +1312,7 @@ function updateLighting() {
     m.emissiveIntensity += ((glow ? 0.85 : 0) - m.emissiveIntensity) * 0.06;
   }
   lampHeadMat.color.setHex(glow ? 0xffd57a : 0x555a60);
-  const showSigns = nightGlow > 0.5;
-  for (const s of shopSigns) s.visible = showSigns;
+  for (const s of shopSigns) s.visible = true; // R17: signs lit all day
 }
 
 // bird flocks circling above parks
