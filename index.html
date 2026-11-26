@@ -1600,6 +1600,29 @@ function buildWelcomeArch() {
 }
 buildWelcomeArch();
 
+// R35: fish leaping out of the Nile
+const fishes = [];
+for (let i = 0; i < 3; i++) {
+  const geo = new THREE.ConeGeometry(0.18, 0.85, 6);
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x9fc4d8 }));
+  scene.add(m);
+  fishes.push({ mesh: m, x: RIVER_X + (Math.random() - 0.5) * 5, z: -HALF + Math.random() * HALF * 2, t0: Math.random() * 8, period: 7 + Math.random() * 8 });
+}
+function updateFish() {
+  for (const f of fishes) {
+    const ph = (perfT + f.t0) % f.period;
+    if (ph < 1.15) {
+      const k = ph / 1.15;
+      f.mesh.visible = true;
+      f.mesh.position.set(f.x, Math.sin(k * Math.PI) * 1.7 + 0.1, f.z);
+      f.mesh.rotation.z = Math.cos(k * Math.PI) * 1.1; // nose up then dive
+    } else {
+      if (f.mesh.visible) { f.z = -HALF + Math.random() * HALF * 2; f.x = RIVER_X + (Math.random() - 0.5) * 5; }
+      f.mesh.visible = false;
+    }
+  }
+}
+
 // ============================== Sky / day-night ==============================
 const SKY = {
   night:  { sky: new THREE.Color(0x0a1024), fog: new THREE.Color(0x0a1024), hemi: 0.12, sun: 0.0,  sunC: 0x223 },
@@ -2814,6 +2837,7 @@ function animate() {
   updateFire(dtReal);
   updateVendors(dtReal);
   updateBalloon(dtReal);
+  updateFish();
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
