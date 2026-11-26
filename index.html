@@ -654,6 +654,7 @@ function placeBuilding(type, key, silent) {
     buildBalconyInstances();
     buildClotheslineInstances();
     buildFlagInstances();
+    buildRooftopInstances();
     mesh.scale.y = 0.03;
     buildAnims.push({ mesh, t: 0, h: mesh.userData.h });
   }
@@ -673,6 +674,7 @@ function removeBuilding(key) {
   buildBalconyInstances();
   buildClotheslineInstances();
   buildFlagInstances();
+  buildRooftopInstances();
   return true;
 }
 
@@ -3867,6 +3869,98 @@ function updateFishermen(dtReal) {
 }
 initFishermen();
 
+// R54: baladi bakery (فرن بلدي) at the south edge — dome oven, bread racks, morning queue, chimney smoke
+let bakery = null;
+function initBakery() {
+  if (bakery) return;
+  const BX = 78, BZ = 127.5;
+  const grp = new THREE.Group();
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(7, 3.4, 6), new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }));
+  hall.position.set(BX, 1.7, BZ);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(2.2, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xb08a5a }));
+  dome.position.set(BX - 1.5, 3.4, BZ + 0.5);
+  const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2.4, 8), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+  chimney.position.set(BX - 1.5, 5.6, BZ + 0.5);
+  const mouth = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.3), new THREE.MeshBasicMaterial({ color: 0xff8c3a }));
+  mouth.position.set(BX - 1.5, 0.9, BZ - 3.02);
+  mouth.rotation.y = Math.PI;
+  const cv = document.createElement('canvas'); cv.width = 192; cv.height = 48;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#6b4423'; g.fillRect(0, 0, 192, 48);
+  g.fillStyle = '#ffd75a'; g.font = 'bold 32px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('فرن بلدي', 96, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(BX + 1.2, 3.9, BZ - 3.02);
+  sign.rotation.y = Math.PI;
+  grp.add(hall, dome, chimney, mouth, sign);
+  // bread racks
+  const rackM = new THREE.MeshLambertMaterial({ color: 0x7a5230 });
+  for (const rx of [BX + 2.6, BX + 4.2]) {
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.5), rackM);
+    rack.position.set(rx, 0.8, BZ - 3.6);
+    grp.add(rack);
+  }
+  const breadG = new THREE.CylinderGeometry(0.16, 0.16, 0.05, 8);
+  const breadM = new THREE.MeshLambertMaterial({ color: 0xd9a860 });
+  const breads = new THREE.InstancedMesh(breadG, breadM, 24);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(1, 1, 1);
+  let bi = 0;
+  for (const rx of [BX + 2.6, BX + 4.2]) {
+    for (let sh = 0; sh < 3; sh++) for (let k = 0; k < 4; k++) {
+      V.set(rx - 0.4 + k * 0.27, 0.5 + sh * 0.45, BZ - 3.6);
+      M.compose(V, Q.identity(), SC); breads.setMatrixAt(bi++, M);
+    }
+  }
+  grp.add(breads);
+  scene.add(grp);
+  // chimney smoke (dawn only)
+  const PUFFS = 6;
+  const smoke = new THREE.InstancedMesh(new THREE.SphereGeometry(0.3, 6, 5), new THREE.MeshLambertMaterial({ color: 0xeeeeee, transparent: true, opacity: 0.45 }), PUFFS);
+  smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  smoke.visible = false;
+  scene.add(smoke);
+  // morning queue
+  const queue = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 6; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.45, 0.5) }));
+    shirt.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i % 3] }));
+    head.position.y = 1.15;
+    p.add(shirt, head);
+    p.position.set(BX - 0.5 + i * 1.1, 0, BZ - 5.2);
+    p.userData = { ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    queue.push(p);
+  }
+  bakery = { grp, smoke, queue, t: 0, cx: BX - 1.5, cz: BZ + 0.5 };
+}
+function updateBakery(dtReal) {
+  if (!bakery) return;
+  bakery.t += dtReal;
+  const h = state.hour;
+  const morning = h >= 5.5 && h < 10;
+  const M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), SC = new THREE.Vector3(1, 1, 1);
+  bakery.smoke.visible = morning;
+  if (morning) {
+    for (let i = 0; i < 6; i++) {
+      const life = ((bakery.t * 0.5 + i / 6) % 1);
+      const sc = 0.5 + life * 1.3;
+      V.set(bakery.cx + Math.sin(life * 5 + i) * 0.4, 6.8 + life * 3.2, bakery.cz);
+      SC.set(sc, sc, sc);
+      M.compose(V, Q.identity(), SC); bakery.smoke.setMatrixAt(i, M);
+    }
+    bakery.smoke.instanceMatrix.needsUpdate = true;
+  }
+  for (const p of bakery.queue) {
+    p.visible = morning;
+    if (morning) p.rotation.z = Math.sin(bakery.t * 1.6 + p.userData.ph) * 0.04;
+  }
+}
+initBakery();
+
 updateDayTxt();
 initPalms();
 initKites();
@@ -3874,6 +3968,48 @@ buildClockTower();
 buildBalconyInstances();
 buildClotheslineInstances();
 buildFlagInstances();
+// R53: rooftop water tanks + satellite dishes (instanced, rebuilt on build/demolish)
+let tankMesh = null, dishMesh = null;
+const tankGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.9, 8);
+const tankMat = new THREE.MeshLambertMaterial({ color: 0xe8e8e2 });
+const dishGeo = new THREE.ConeGeometry(0.42, 0.3, 8);
+const dishMat = new THREE.MeshLambertMaterial({ color: 0xbfc4cc });
+function buildRooftopInstances() {
+  if (tankMesh) { scene.remove(tankMesh); tankMesh = null; }
+  if (dishMesh) { scene.remove(dishMesh); dishMesh = null; }
+  const tanks = [], dishes = [];
+  for (const [key, rec] of state.plots) {
+    if (!rec.mesh || !rec.mesh.userData || !rec.mesh.userData.h) continue;
+    const m = rec.mesh, h = m.userData.h;
+    if (!m.geometry || !m.geometry.parameters) continue; // composite buildings (groups) have no single roof box
+    const w = m.geometry.parameters.width, d = m.geometry.parameters.depth;
+    const rot = m.rotation.y || 0, cos = Math.cos(rot), sin = Math.sin(rot);
+    const kh = key.split(',').reduce((a, c) => a + (+c || 0) * 7, 0);
+    if (h > 9 && kh % 10 < 7) {
+      const lx = ((kh % 10) / 10 - 0.5) * w * 0.5, lz = (((kh * 3) % 10) / 10 - 0.5) * d * 0.5;
+      tanks.push({ x: m.position.x + lx * cos + lz * sin, y: h + 0.45, z: m.position.z - lx * sin + lz * cos });
+    }
+    if (h > 5 && kh % 10 < 6) {
+      const nd = kh % 3 === 0 ? 2 : 1;
+      for (let k = 0; k < nd; k++) {
+        const lx = (((kh + k * 5) % 10) / 10 - 0.5) * w * 0.6, lz = (((kh * 7 + k * 3) % 10) / 10 - 0.5) * d * 0.6;
+        dishes.push({ x: m.position.x + lx * cos + lz * sin, y: h + 0.25, z: m.position.z - lx * sin + lz * cos, ry: kh % 6 });
+      }
+    }
+  }
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+  if (tanks.length) {
+    tankMesh = new THREE.InstancedMesh(tankGeo, tankMat, tanks.length);
+    tanks.forEach((t, i) => { v.set(t.x, t.y, t.z); m4.compose(v, q.identity(), sc); tankMesh.setMatrixAt(i, m4); });
+    scene.add(tankMesh);
+  }
+  if (dishes.length) {
+    dishMesh = new THREE.InstancedMesh(dishGeo, dishMat, dishes.length);
+    dishes.forEach((t, i) => { e.set(-0.7, t.ry, 0); q.setFromEuler(e); v.set(t.x, t.y, t.z); m4.compose(v, q, sc); dishMesh.setMatrixAt(i, m4); });
+    scene.add(dishMesh);
+  }
+}
+buildRooftopInstances();
 recalcStats();
 
 // citizens init after city exists
@@ -4024,6 +4160,7 @@ function animate() {
   updateFireStation(dtReal);
   updatePigeonLoft(dtReal);
   updateFishermen(dtReal);
+  updateBakery(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
