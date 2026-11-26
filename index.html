@@ -5608,6 +5608,95 @@ function updateStreetFootball(dtReal) {
 }
 initStreetFootball();
 
+// R71: evening book fair (معرض الكتاب) on the west bank — stall rows with colorful book spines, browsing crowd, string lights
+let bookFair = null;
+function initBookFair() {
+  if (bookFair) return;
+  const BX = -19, Z0 = 60;
+  const grp = new THREE.Group();
+  // ground mat
+  const mat = new THREE.Mesh(new THREE.BoxGeometry(7, 0.16, 17), new THREE.MeshLambertMaterial({ color: 0xd9c69c }));
+  mat.position.set(BX, 0.08, Z0 + 7.5);
+  grp.add(mat);
+  // two rows of stalls with colorful book rows
+  const spineCols = [0xe84545, 0x2f9de8, 0xf2c020, 0x5ac85a, 0xb45ae8, 0xe88a2f];
+  for (let i = 0; i < 4; i++) {
+    const sz = Z0 + 1.6 + i * 4;
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.7, 3.0), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+    shelf.position.set(BX, 0.95, sz);
+    grp.add(shelf);
+    // book spines on two visible shelves
+    for (let row = 0; row < 2; row++) {
+      for (let b = 0; b < 8; b++) {
+        const bk = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.24), new THREE.MeshLambertMaterial({ color: spineCols[(b + row * 3 + i) % 6] }));
+        bk.position.set(BX + (row ? 0.42 : -0.42), 0.85 + row * 0.65, sz - 1.2 + b * 0.34);
+        grp.add(bk);
+      }
+    }
+    // small canopy
+    const can = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 3.4), new THREE.MeshLambertMaterial({ color: i % 2 ? 0x2f6fed : 0xb3312a }));
+    can.position.set(BX, 2.1, sz);
+    grp.add(can);
+  }
+  // string lights along the fair
+  const bulbs = [];
+  for (let i = 0; i < 10; i++) {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffd75a }));
+    b.position.set(BX - 1.6 + (i % 2) * 3.2, 2.6 + Math.sin(i) * 0.15, Z0 + i * 1.7);
+    grp.add(b); bulbs.push(b);
+  }
+  // entrance sign facing the river path (east)
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 48;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#3a2a5e'; g.fillRect(0, 0, 256, 48);
+  g.fillStyle = '#ffe9a8'; g.font = 'bold 30px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('معرض الكتاب 📚', 128, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.0), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(BX + 3.6, 2.9, Z0 + 0.4);
+  sign.rotation.y = Math.PI / 2;
+  grp.add(sign);
+  scene.add(grp);
+  // browsing crowd
+  const crowd = [];
+  const skinCols = [0xc89b6d, 0xa8763e, 0x8a5a2b];
+  for (let i = 0; i < 9; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.35, 0.5) }));
+    shirt.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: skinCols[i % 3] }));
+    head.position.y = 1.15;
+    p.add(shirt, head);
+    p.userData = { stall: i % 4, side: i % 2 ? 1 : -1, ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    crowd.push(p);
+  }
+  bookFair = { grp, bulbs, crowd, t: 0, toastedDay: -1, BX, Z0 };
+}
+function updateBookFair(dtReal) {
+  if (!bookFair) return;
+  const f = bookFair;
+  f.t += dtReal;
+  const h = state.hour;
+  const open = h >= 17 && h < 23;
+  const night = h >= 17.5 || h < 5;
+  f.bulbs.forEach((b, i) => b.material.color.setHSL((i * 0.11 + (night ? f.t * 0.1 : 0)) % 1, 0.8, night ? 0.6 : 0.45));
+  if (open && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('📚 معرض الكتاب اتفتح على البر الغربي — نزهة المساء!');
+  }
+  for (const p of f.crowd) {
+    p.visible = open;
+    if (!open) continue;
+    const u = p.userData;
+    const sz = f.Z0 + 1.6 + u.stall * 4;
+    p.position.set(f.BX + u.side * 1.5 + Math.sin(f.t * 0.5 + u.ph) * 0.3, 0.2, sz + Math.cos(f.t * 0.4 + u.ph) * 1.1);
+    p.rotation.y = u.side > 0 ? -Math.PI / 2 : Math.PI / 2;
+  }
+}
+initBookFair();
+
+
 
 
 
@@ -5835,6 +5924,7 @@ function animate() {
   updateAhwa(dtReal);
   updateCinema(dtReal);
   updateStreetFootball(dtReal);
+  updateBookFair(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
