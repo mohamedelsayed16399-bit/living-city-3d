@@ -1623,6 +1623,91 @@ function updateFish() {
   }
 }
 
+// R36: elevated metro line with a running train and 2 stations
+const METRO_X = 39; // above the x=39 road, Cairo-metro style
+const metroStations = [-39, 39];
+(function buildMetro() {
+  const concrete = new THREE.MeshLambertMaterial({ color: 0xb8b4ac });
+  // pillars (instanced)
+  const pGeo = new THREE.CylinderGeometry(0.7, 0.9, 6, 8); pGeo.translate(0, 3, 0);
+  const nP = 18;
+  const pillars = new THREE.InstancedMesh(pGeo, concrete, nP);
+  for (let i = 0; i < nP; i++) {
+    _v.set(METRO_X, 0, -HALF + 6.5 + i * 13);
+    _m4.compose(_v, _q.identity(), _s.set(1, 1, 1));
+    pillars.setMatrixAt(i, _m4);
+  }
+  scene.add(pillars);
+  // viaduct deck + rails
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.7, HALF * 2 + 4), concrete);
+  deck.position.set(METRO_X, 6.35, 0);
+  scene.add(deck);
+  const railG = [];
+  for (const s of [-1, 1]) { const r = new THREE.BoxGeometry(0.18, 0.14, HALF * 2 + 4); r.translate(METRO_X + s * 0.8, 6.77, 0); railG.push(r); }
+  scene.add(new THREE.Mesh(mergeGeos(railG), new THREE.MeshLambertMaterial({ color: 0x5a5f66 })));
+  // stations: platform + canopy
+  for (const sz of metroStations) {
+    const st = new THREE.Group();
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.5, 22), concrete);
+    plat.position.set(METRO_X - 3.2, 6.25, sz);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.25, 14), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+    canopy.position.set(METRO_X - 3.2, 9.2, sz);
+    const legs = [];
+    for (const dz of [-6, 0, 6]) { const l = new THREE.BoxGeometry(0.25, 2.8, 0.25); l.translate(METRO_X - 5.2, 7.8, sz + dz); legs.push(l); }
+    st.add(plat, canopy, new THREE.Mesh(mergeGeos(legs), concrete));
+    // station sign
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 48;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#14304f'; g.fillRect(0, 0, 256, 48);
+    g.fillStyle = '#fff'; g.font = 'bold 26px Cairo, Tahoma, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('🚇 محطة المترو', 128, 25);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.85), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+    sign.position.set(METRO_X - 5.8, 8.6, sz);
+    sign.rotation.y = -Math.PI / 2;
+    st.add(sign);
+    scene.add(st);
+  }
+})();
+// train: 3 cars
+const metroTrain = (() => {
+  const grp = new THREE.Group();
+  const carBodyM = new THREE.MeshLambertMaterial({ color: 0xf0f0ee });
+  const stripeM = new THREE.MeshBasicMaterial({ color: 0xd42424 });
+  const winM = new THREE.MeshLambertMaterial({ color: 0x1c2733 });
+  for (let i = 0; i < 3; i++) {
+    const car = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.1, 7.2), carBodyM);
+    body.position.y = 1.35;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.3, 7.24), stripeM);
+    stripe.position.y = 0.85;
+    const wins = new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.7, 6.6), winM);
+    wins.position.y = 1.65;
+    car.add(body, stripe, wins);
+    car.position.z = i * -8.0;
+    grp.add(car);
+  }
+  scene.add(grp);
+  return grp;
+})();
+const metroState = { z: -HALF + 10, dir: 1, speed: 12, dwell: 0, lastStop: -999 };
+function updateMetro(dtReal) {
+  const m = metroState;
+  if (m.dwell > 0) { m.dwell -= dtReal; }
+  else {
+    const zPrev = m.z;
+    m.z += m.dir * m.speed * dtReal;
+    if (m.z > HALF + 10) { m.z = HALF + 10; m.dir = -1; }
+    if (m.z < -HALF - 10) { m.z = -HALF - 10; m.dir = 1; }
+    for (const sz of metroStations) {
+      if (Math.abs(m.z - m.lastStop) > 5 && Math.sign(sz - zPrev) !== Math.sign(sz - m.z) && Math.abs(zPrev - sz) < m.speed * dtReal * 2) {
+        m.dwell = 3; m.lastStop = sz;
+      }
+    }
+  }
+  metroTrain.position.set(METRO_X, 6.7, m.z);
+  metroTrain.children.forEach((car, i) => { car.position.z = m.dir > 0 ? i * -8.0 : i * 8.0; });
+}
+
 // ============================== Sky / day-night ==============================
 const SKY = {
   night:  { sky: new THREE.Color(0x0a1024), fog: new THREE.Color(0x0a1024), hemi: 0.12, sun: 0.0,  sunC: 0x223 },
@@ -2838,6 +2923,7 @@ function animate() {
   updateVendors(dtReal);
   updateBalloon(dtReal);
   updateFish();
+  updateMetro(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
