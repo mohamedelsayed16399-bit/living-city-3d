@@ -5108,6 +5108,86 @@ function updateFunfair(dtReal) {
 }
 initFunfair();
 
+// R66: railway level crossing (مزلقان السكة) where the train track crosses the north ring road — barriers + flashers synced to the train
+let levelCrossing = null;
+function initLevelCrossing() {
+  if (levelCrossing) return;
+  const CX = 22, CZ = -117; // track x=22, ring road z=-117
+  const grp = new THREE.Group();
+  // crossing deck plates over the rails
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.12, 9), new THREE.MeshLambertMaterial({ color: 0x6b6558 }));
+  deck.position.set(CX, 0.1, CZ);
+  grp.add(deck);
+  // barrier units on both approaches
+  const arms = [];
+  for (const bx of [CX - 4.6, CX + 4.6]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 1.5, 8), new THREE.MeshLambertMaterial({ color: 0xd8d8d2 }));
+    post.position.set(bx, 0.75, CZ - 4.6);
+    grp.add(post);
+    const pivot = new THREE.Group();
+    pivot.position.set(bx, 1.45, CZ - 4.6);
+    // striped arm spanning the road
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 16;
+    const g = cv.getContext('2d');
+    for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#d42a2a' : '#f2f2ee'; g.fillRect(i * 16, 0, 16, 16); }
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 8.2), new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(cv) }));
+    arm.position.z = 4.1;
+    pivot.add(arm);
+    grp.add(pivot);
+    arms.push(pivot);
+  }
+  // flashing light posts
+  const flashers = [];
+  for (const fx of [CX - 3.4, CX + 3.4]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 3.2, 6), new THREE.MeshLambertMaterial({ color: 0x4a4f58 }));
+    pole.position.set(fx, 1.6, CZ + 4.6);
+    grp.add(pole);
+    for (let li = 0; li < 2; li++) {
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x551111 }));
+      lamp.position.set(fx, 2.9 + li * 0.55, CZ + 4.6);
+      grp.add(lamp);
+      flashers.push(lamp);
+    }
+  }
+  // warning sign facing the city traffic
+  const cv2 = document.createElement('canvas'); cv2.width = 224; cv2.height = 48;
+  const g2 = cv2.getContext('2d');
+  g2.fillStyle = '#f2c020'; g2.fillRect(0, 0, 224, 48);
+  g2.fillStyle = '#1c1c20'; g2.font = 'bold 28px Tahoma'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.fillText('مزلقان سكة ⚠', 112, 26);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.8), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), side: THREE.DoubleSide }));
+  sign.position.set(CX - 5.2, 2.6, CZ + 4.8);
+  grp.add(sign);
+  scene.add(grp);
+  levelCrossing = { grp, arms, flashers, t: 0, armAngle: 1.45, toastedDay: -1 };
+}
+function updateLevelCrossing(dtReal) {
+  if (!levelCrossing) return;
+  const lc = levelCrossing;
+  lc.t += dtReal;
+  const h = state.hour;
+  // same schedule as the train: moving 7-8, 9-10, 17-18, 19-20
+  const moving = (h >= 7 && h < 8) || (h >= 9 && h < 10) || (h >= 17 && h < 18) || (h >= 19 && h < 20);
+  const target = moving ? 0 : 1.45; // 0 = arm down across the road
+  lc.armAngle += (target - lc.armAngle) * Math.min(1, dtReal * 3);
+  for (const a of lc.arms) a.rotation.x = -lc.armAngle;
+  if (moving) {
+    const on = Math.floor(lc.t * 2.4) % 2 === 0;
+    lc.flashers[0].material.color.setHex(on ? 0xff2222 : 0x551111);
+    lc.flashers[1].material.color.setHex(on ? 0x551111 : 0xff2222);
+    lc.flashers[2].material.color.setHex(on ? 0x551111 : 0xff2222);
+    lc.flashers[3].material.color.setHex(on ? 0xff2222 : 0x551111);
+    if (lc.toastedDay !== state.day) {
+      lc.toastedDay = state.day;
+      toast('🔔 مزلقان السكة قفل — القطر عدّى!');
+    }
+  } else {
+    for (const f of lc.flashers) f.material.color.setHex(0x551111);
+  }
+}
+initLevelCrossing();
+
+
 
 
 
@@ -5325,6 +5405,7 @@ function animate() {
   updatePedBridge(dtReal);
   updateDinnerCruise(dtReal);
   updateFunfair(dtReal);
+  updateLevelCrossing(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
