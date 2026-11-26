@@ -1524,6 +1524,41 @@ function updateVendors(dtReal) {
   }
 }
 
+// R32: hot air balloon drifting over the city
+const balloon = (() => {
+  const grp = new THREE.Group();
+  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 32;
+  const g = cv.getContext('2d');
+  const cols = ['#e84545', '#f2c020', '#2f9de8', '#5ac85a', '#e8742a', '#8a4fd8', '#e84545', '#f2c020'];
+  for (let i = 0; i < 8; i++) { g.fillStyle = cols[i]; g.fillRect(i * 8, 0, 8, 32); }
+  const tex = new THREE.CanvasTexture(cv);
+  const env = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 12), new THREE.MeshLambertMaterial({ map: tex }));
+  env.scale.y = 1.15; env.position.y = 3.6;
+  const basket = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 1.1), new THREE.MeshLambertMaterial({ color: 0x8a6238 }));
+  basket.position.y = 0;
+  const ropes = [];
+  for (const [rx, rz] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) {
+    const r = new THREE.CylinderGeometry(0.02, 0.02, 1.6, 3);
+    r.translate(rx * 1.6, 1.2, rz * 1.6);
+    ropes.push(r);
+  }
+  grp.add(new THREE.Mesh(mergeGeos(ropes), new THREE.MeshLambertMaterial({ color: 0x4a3626 })));
+  grp.add(env, basket);
+  scene.add(grp);
+  return grp;
+})();
+const balloonState = { x: -HALF - 30, z: -30, dir: 1, speed: 1.1 };
+function updateBalloon(dtReal) {
+  balloonState.x += balloonState.dir * balloonState.speed * dtReal;
+  if (balloonState.x > HALF + 30) { balloonState.x = -HALF - 30; balloonState.z = -60 + Math.random() * 120; }
+  balloon.position.set(
+    balloonState.x,
+    30 + Math.sin(perfT * 0.4) * 2.2,
+    balloonState.z + Math.sin(perfT * 0.23) * 4
+  );
+  balloon.rotation.y = perfT * 0.05;
+}
+
 // ============================== Sky / day-night ==============================
 const SKY = {
   night:  { sky: new THREE.Color(0x0a1024), fog: new THREE.Color(0x0a1024), hemi: 0.12, sun: 0.0,  sunC: 0x223 },
@@ -2735,6 +2770,7 @@ function animate() {
   updateCruiseBoat(dtReal);
   updateFire(dtReal);
   updateVendors(dtReal);
+  updateBalloon(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
   updateFlags(perfT);
