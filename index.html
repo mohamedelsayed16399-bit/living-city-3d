@@ -644,6 +644,7 @@ function placeBuilding(type, key, silent) {
     recalcStats();
     buildBalconyInstances();
     buildClotheslineInstances();
+    buildFlagInstances();
     mesh.scale.y = 0.03;
     buildAnims.push({ mesh, t: 0, h: mesh.userData.h });
   }
@@ -662,6 +663,7 @@ function removeBuilding(key) {
   recalcStats();
   buildBalconyInstances();
   buildClotheslineInstances();
+  buildFlagInstances();
   return true;
 }
 
@@ -1637,6 +1639,49 @@ function updateCruiseBoat(dtReal) {
   for (let i = 0; i < 4; i++) boatBulbMats[i].color.setHex([0xff5a5a, 0x5aff8a, 0x5aa8ff, 0xffd75a][i]).multiplyScalar(g);
 }
 
+// R28: Egyptian flags waving on the tallest rooftops
+const flagTex = (() => {
+  const cv = document.createElement('canvas'); cv.width = 96; cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ce1126'; g.fillRect(0, 0, 96, 22);
+  g.fillStyle = '#f5f2ea'; g.fillRect(0, 22, 96, 20);
+  g.fillStyle = '#1a1a1a'; g.fillRect(0, 42, 96, 22);
+  g.fillStyle = '#c09300'; g.fillRect(40, 26, 16, 12); // eagle hint
+  const t = new THREE.CanvasTexture(cv); return t;
+})();
+const flags = [];
+let flagGroup = null;
+function buildFlagInstances() {
+  if (flagGroup) { scene.remove(flagGroup); }
+  flags.length = 0;
+  flagGroup = new THREE.Group();
+  const tall = [];
+  for (const [k, r] of state.plots) {
+    if (r.mesh && r.mesh.userData.h) tall.push({ x: r.mesh.position.x, z: r.mesh.position.z, h: r.mesh.userData.h });
+  }
+  tall.sort((a, b) => b.h - a.h);
+  const top = tall.slice(0, 7);
+  const poleMat = new THREE.MeshLambertMaterial({ color: 0xd8d8d8 });
+  const flagMat = new THREE.MeshLambertMaterial({ map: flagTex, side: THREE.DoubleSide });
+  for (let i = 0; i < top.length; i++) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.2, 5), poleMat);
+    pole.position.set(top[i].x, top[i].h + 1.6, top[i].z);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.1), flagMat);
+    flag.geometry = flag.geometry.clone();
+    flag.geometry.translate(0.85, 0, 0); // hang from the pole
+    flag.position.set(top[i].x, top[i].h + 2.6, top[i].z);
+    flagGroup.add(pole, flag);
+    flags.push({ mesh: flag, phase: i * 1.7 });
+  }
+  scene.add(flagGroup);
+}
+function updateFlags(t) {
+  for (const f of flags) {
+    f.mesh.rotation.y = Math.sin(t * 2.2 + f.phase) * 0.35 + 0.2;
+    f.mesh.rotation.z = Math.sin(t * 3.1 + f.phase) * 0.08;
+  }
+}
+
 // R26: paper kites flying over the river and parks (Egyptian balcony pastime)
 const kites = [];
 function initKites() {
@@ -2341,6 +2386,7 @@ initKites();
 buildClockTower();
 buildBalconyInstances();
 buildClotheslineInstances();
+buildFlagInstances();
 recalcStats();
 
 // citizens init after city exists
@@ -2476,6 +2522,7 @@ function animate() {
   updateCruiseBoat(dtReal);
   updateClothSway(perfT);
   updateKites(perfT);
+  updateFlags(perfT);
 
   if (state.speed > 0) {
     state.hour += dtGameHours;
