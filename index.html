@@ -93,6 +93,7 @@
   <button class="sbtn" id="camBtn" title="إعادة الكاميرا">🎥</button>
   <button class="sbtn" id="weatherBtn" title="تغيير الطقس">🌦️</button>
   <button class="sbtn" id="helpBtn" title="مساعدة">❓</button>
+  <button class="sbtn" id="perfBtn" title="وضع توفير الأداء">⚡</button>
 </div>
 
 <div class="hud" id="toolbar">
@@ -174,6 +175,18 @@ const renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE, powerPreferenc
 renderer.setPixelRatio(CFG.pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 if (CFG.shadows) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; }
+
+// R25: low-power mode (⚡) - persisted; big FPS win on phones
+let lowPower = false;
+try { lowPower = localStorage.getItem('livingCityLowPower') === '1'; } catch (e) {}
+function applyLowPower() {
+  renderer.shadowMap.enabled = CFG.shadows && !lowPower;
+  renderer.setPixelRatio(lowPower ? 1 : CFG.pixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+  const b = document.getElementById('perfBtn');
+  if (b) { b.classList.toggle('on', lowPower); b.style.opacity = lowPower ? '1' : '0.55'; }
+}
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -1890,6 +1903,13 @@ document.getElementById('weatherBtn').onclick = () => {
   toast(WEATHER_ICONS[state.weather] + ' الطقس بقى ' + WEATHERS[state.weather]);
 };
 document.getElementById('helpBtn').onclick = () => document.getElementById('helpOverlay').style.display = 'flex';
+document.getElementById('perfBtn').onclick = () => {
+  lowPower = !lowPower;
+  try { localStorage.setItem('livingCityLowPower', lowPower ? '1' : '0'); } catch (e) {}
+  applyLowPower();
+  toast(lowPower ? '⚡ وضع توفير الأداء شغال — أنعم على الموبايل' : '🎨 الجودة الكاملة رجعت');
+};
+applyLowPower();
 
 // ============================== Ambient audio (WebAudio, no files) ==============================
 let AC = null, rainGain = null, humGain = null, soundOn = false;
