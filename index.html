@@ -8081,6 +8081,101 @@ function updateMahragan(dtReal) {
   }
 }
 
+
+let storks = null;
+function initStorks() {
+  if (storks) return;
+  const grp = new THREE.Group();
+  const birds = [];
+  const bodyM = new THREE.MeshLambertMaterial({ color: 0xf2f2ee });
+  const tipM = new THREE.MeshLambertMaterial({ color: 0x22242a, side: THREE.DoubleSide });
+  const beakM = new THREE.MeshLambertMaterial({ color: 0xe86a2a });
+  for (let i = 0; i < 9; i++) {
+    const b = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 7), bodyM);
+    body.scale.set(1.6, 0.8, 0.8);
+    b.add(body);
+    // neck + head + beak forward (+x local)
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.9, 5), bodyM);
+    neck.rotation.z = Math.PI / 2 - 0.35;
+    neck.position.set(1.0, 0.25, 0);
+    b.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 7, 6), bodyM);
+    head.position.set(1.45, 0.42, 0);
+    b.add(head);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.55, 5), beakM);
+    beak.rotation.z = -Math.PI / 2;
+    beak.position.set(1.75, 0.4, 0);
+    b.add(beak);
+    // trailing legs
+    const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 4), beakM);
+    legs.rotation.z = Math.PI / 2 + 0.15;
+    legs.position.set(-1.1, -0.1, 0);
+    b.add(legs);
+    // wings: white base + black tip, flap around z
+    const wingL = new THREE.Group();
+    const wl1 = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.5), bodyM);
+    wl1.rotation.x = -Math.PI / 2;
+    wl1.position.z = 0.75;
+    wingL.add(wl1);
+    const wl2 = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), tipM);
+    wl2.rotation.x = -Math.PI / 2;
+    wl2.position.z = 1.9;
+    wingL.add(wl2);
+    b.add(wingL);
+    const wingR = new THREE.Group();
+    const wr1 = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.5), bodyM);
+    wr1.rotation.x = -Math.PI / 2;
+    wr1.position.z = -0.75;
+    wingR.add(wr1);
+    const wr2 = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), tipM);
+    wr2.rotation.x = -Math.PI / 2;
+    wr2.position.z = -1.9;
+    wingR.add(wr2);
+    b.add(wingR);
+    grp.add(b);
+    birds.push({ b, wingL, wingR, ph: i * 0.55 });
+  }
+  scene.add(grp);
+  storks = { grp, birds, t: 0, prog: 0, toastedDay: -1 };
+}
+initStorks();
+
+function updateStorks(dtReal) {
+  if (!storks) return;
+  const f = storks;
+  const on = state.hour >= 8 && state.hour < 11;
+  f.grp.visible = on;
+  if (!on) { f.prog = 0; return; }
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F426} سرب اللقلق مهاجر فوق المدينة — شوف التشكيلة!');
+  }
+  // slow crossing: north (z=-170) to south (z=+170), then loop
+  f.prog += dtReal * 0.9;
+  if (f.prog > 340) f.prog = 0;
+  const baseZ = -170 + f.prog;
+  const baseX = 20 + Math.sin(f.prog * 0.012) * 30;
+  const baseY = 38 + Math.sin(f.t * 0.3) * 1.2;
+  for (let i = 0; i < f.birds.length; i++) {
+    const br = f.birds[i];
+    let off, back;
+    if (i === 0) { off = 0; back = 0; }
+    else {
+      const side = i % 2 === 0 ? 1 : -1;
+      const rank = Math.ceil(i / 2);
+      off = side * rank * 2.6;
+      back = rank * 2.2;
+    }
+    br.b.position.set(baseX + off, baseY + Math.sin(f.t * 2 + br.ph) * 0.25, baseZ - back);
+    br.b.rotation.y = -Math.PI / 2 + Math.sin(f.prog * 0.012 + 1.2) * 0.25;
+    const flap = Math.sin(f.t * 5 + br.ph) * 0.75;
+    br.wingL.rotation.x = flap;
+    br.wingR.rotation.x = -flap;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -8178,6 +8273,7 @@ function animate() {
   updateZeppelin(dtReal);
   updateOasis(dtReal);
   updateMahragan(dtReal);
+  updateStorks(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
