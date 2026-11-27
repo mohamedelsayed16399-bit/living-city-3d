@@ -7266,6 +7266,68 @@ function updateSandBarges(dtReal) {
 }
 initSandBarges();
 
+// R90: sakka water seller (سقا) strolling the corniche sidewalk, 8-20h
+let sakka = null;
+function initSakka() {
+  if (sakka) return;
+  const g = new THREE.Group();
+  // body with vest + galabeya
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: 0x8a2f3f }));
+  body.position.y = 0.85;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+  head.position.y = 1.4;
+  const fez = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.2, 8), new THREE.MeshLambertMaterial({ color: 0xa4232a }));
+  fez.position.y = 1.58;
+  g.add(body, head, fez);
+  // goatskin water bag on his back (teardrop)
+  const bag = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), new THREE.MeshLambertMaterial({ color: 0x6e4a2f }));
+  bag.scale.set(1, 1.35, 0.7);
+  bag.position.set(0, 0.95, 0.34);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.25, 6), new THREE.MeshLambertMaterial({ color: 0x4a3320 }));
+  spout.position.set(0, 1.5, 0.4); spout.rotation.x = -0.5;
+  g.add(bag, spout);
+  // brass cups on the chest strap
+  const brass = new THREE.MeshBasicMaterial({ color: 0xd9a13b });
+  for (let c = 0; c < 3; c++) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.1, 6), brass);
+    cup.position.set(-0.12 + c * 0.12, 1.05, -0.24);
+    g.add(cup);
+  }
+  // legs that step
+  const legG = new THREE.CylinderGeometry(0.07, 0.06, 0.5, 5);
+  const legM = new THREE.MeshLambertMaterial({ color: 0x3a3a44 });
+  const legL = new THREE.Mesh(legG, legM); legL.position.set(-0.1, 0.25, 0);
+  const legR = new THREE.Mesh(legG, legM); legR.position.set(0.1, 0.25, 0);
+  g.add(legL, legR);
+  g.visible = false;
+  scene.add(g);
+  sakka = { g, legL, legR, t: 0, toastedDay: -1 };
+}
+function updateSakka(dtReal) {
+  if (!sakka) return;
+  const f = sakka;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = h >= 8 && h < 20;
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("💧 السقا عدّى — ميه ساقعة يا عطشان!");
+  }
+  f.g.visible = on;
+  if (!on) return;
+  const range = 130, speed = 1.1;
+  const cyc = (f.t * speed) % (range * 2);
+  const z = cyc < range ? -range / 2 + cyc : range / 2 - (cyc - range);
+  const dir = cyc < range ? 1 : -1;
+  f.g.position.set(7.9, 0, z);
+  f.g.rotation.y = dir > 0 ? 0 : Math.PI;
+  f.legL.rotation.x = Math.sin(f.t * 6) * 0.5;
+  f.legR.rotation.x = -Math.sin(f.t * 6) * 0.5;
+  f.g.position.y = Math.abs(Math.sin(f.t * 6)) * 0.03;
+}
+initSakka();
+
+
 
 
 
@@ -7531,6 +7593,7 @@ function animate() {
   updateSweeper(dtReal);
   updateAhwah(dtReal);
   updateSandBarges(dtReal);
+  updateSakka(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
