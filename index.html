@@ -8504,6 +8504,84 @@ function updateSafari(dtReal) {
   }
 }
 
+// R102: Coptic church on the west bank with glowing windows and lanterns at night
+let coptic = null;
+function initCoptic() {
+  if (coptic) return;
+  const grp = new THREE.Group();
+  const CX = -122, CZ = 55;
+  const stoneM = new THREE.MeshLambertMaterial({ color: 0xd9c9a8 });
+  const stoneM2 = new THREE.MeshLambertMaterial({ color: 0xcbb894 });
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(9, 4.5, 13), stoneM);
+  hall.position.set(CX, 2.25, CZ);
+  grp.add(hall);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.5, 13.8), stoneM2);
+  roof.position.set(CX, 4.9, CZ);
+  grp.add(roof);
+  const domeM = new THREE.MeshLambertMaterial({ color: 0xb85c38 });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(2.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), domeM);
+  dome.position.set(CX, 5.1, CZ);
+  grp.add(dome);
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(2.6, 9, 2.6), stoneM);
+  tower.position.set(CX + 5.2, 4.5, CZ - 4.5);
+  grp.add(tower);
+  const towerDome = new THREE.Mesh(new THREE.SphereGeometry(1.6, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2), domeM);
+  towerDome.position.set(CX + 5.2, 9, CZ - 4.5);
+  grp.add(towerDome);
+  const crossM = new THREE.MeshBasicMaterial({ color: 0xd8b23a });
+  function cross(x, y, z, sc) {
+    const c = new THREE.Group();
+    const v = new THREE.Mesh(new THREE.BoxGeometry(0.14 * sc, 1.1 * sc, 0.14 * sc), crossM);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.7 * sc, 0.14 * sc, 0.14 * sc), crossM);
+    h.position.y = 0.28 * sc;
+    c.add(v, h);
+    c.position.set(x, y, z);
+    grp.add(c);
+  }
+  cross(CX, 8.3, CZ, 1.2);
+  cross(CX + 5.2, 11.4, CZ - 4.5, 0.9);
+  const wins = [];
+  for (let i = 0; i < 5; i++) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.6, 0.15), new THREE.MeshBasicMaterial({ color: 0x64432a }));
+    w.position.set(CX + 4.55, 2.4, CZ - 4.8 + i * 2.4);
+    grp.add(w); wins.push(w);
+  }
+  for (let i = 0; i < 3; i++) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.6, 0.15), new THREE.MeshBasicMaterial({ color: 0x64432a }));
+    w.position.set(CX - 4.55, 2.4, CZ - 2.4 + i * 2.4);
+    grp.add(w); wins.push(w);
+  }
+  const lanterns = [];
+  for (let i = 0; i < 4; i++) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 5), stoneM2);
+    pole.position.set(CX - 3 + (i % 2) * 3, 1.2, CZ + 8.2 + Math.floor(i / 2) * 2.2);
+    grp.add(pole);
+    const l = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffc86e, transparent: true, opacity: 0.25 }));
+    l.position.set(pole.position.x, 2.5, pole.position.z);
+    grp.add(l);
+    lanterns.push(l);
+  }
+  scene.add(grp);
+  coptic = { grp, wins, lanterns, t: 0, toastedDay: -1 };
+}
+initCoptic();
+
+function updateCoptic(dtReal) {
+  if (!coptic) return;
+  const f = coptic;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{26EA} الكنيسة القبطية على الضفة الغربية — فوانيسها بتنوّر بالليل!');
+  }
+  const glow = nightGlow;
+  const warm = new THREE.Color(0xffc86e);
+  for (const w of f.wins) w.material.color.setHex(0x64432a).lerp(warm, glow * 0.9);
+  for (let i = 0; i < f.lanterns.length; i++) {
+    f.lanterns[i].material.opacity = 0.25 + glow * (0.6 + Math.sin(f.t * 3 + i * 1.7) * 0.15);
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -8606,6 +8684,7 @@ function animate() {
   updateHouseboats(dtReal);
   updateMeteors(dtReal);
   updateSafari(dtReal);
+  updateCoptic(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
