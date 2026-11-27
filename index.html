@@ -9901,6 +9901,101 @@ function updateNubia(dtReal) {
   f.ball.position.y = 0.4 + Math.abs(Math.sin(f.t * 2.2)) * 0.35;
 }
 
+
+// R118: camel caravan looping the deep south-west desert, 7-18h
+let caravan = null;
+function initCaravan() {
+  if (caravan) return;
+  const grp = new THREE.Group();
+  const camelM = new THREE.MeshLambertMaterial({ color: 0xb98d55 });
+  const camelD = new THREE.MeshLambertMaterial({ color: 0xa87b45 });
+  const camels = [];
+  for (let i = 0; i < 5; i++) {
+    const cm = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.85, 0.75), i % 2 ? camelD : camelM);
+    body.position.y = 1.35;
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), i % 2 ? camelD : camelM);
+    hump.position.set(-0.1, 1.9, 0);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.1, 6), i % 2 ? camelD : camelM);
+    neck.position.set(0.95, 2.1, 0);
+    neck.rotation.z = -0.45;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.28), i % 2 ? camelD : camelM);
+    head.position.set(1.35, 2.55, 0);
+    cm.add(body, hump, neck, head);
+    // legs
+    const legs = [];
+    for (const dx of [-0.65, 0.65]) for (const dz of [-0.22, 0.22]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.0, 5), i % 2 ? camelD : camelM);
+      leg.position.set(dx, 0.5, dz);
+      cm.add(leg);
+      legs.push(leg);
+    }
+    // saddle + rider on first 3
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.8), new THREE.MeshLambertMaterial({ color: [0xc0392b, 0x2c3e50, 0xe8b93a][i % 3] }));
+    saddle.position.set(-0.1, 2.15, 0);
+    cm.add(saddle);
+    if (i < 3) {
+      const rider = new THREE.Group();
+      const rb = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.55, 0.28), new THREE.MeshLambertMaterial({ color: [0xeadfc8, 0x5c6e8c, 0x8e3b2f][i] }));
+      rb.position.y = 2.6;
+      const rh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshLambertMaterial({ color: 0xb9825c }));
+      rh.position.y = 3.0;
+      const rs = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.14, 8), new THREE.MeshLambertMaterial({ color: 0xf3ead2 }));
+      rs.position.y = 3.12;
+      rider.add(rb, rh, rs);
+      cm.add(rider);
+    }
+    grp.add(cm);
+    camels.push({ g: cm, legs, phase: i * 1.3 });
+  }
+  // guide walking ahead
+  const guide = new THREE.Group();
+  const gb = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.8, 0.3), new THREE.MeshLambertMaterial({ color: 0x3f6ea8 }));
+  gb.position.y = 1.0;
+  const gh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: 0xb9825c }));
+  gh.position.y = 1.6;
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 5), new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
+  stick.position.set(0.28, 1.0, 0);
+  stick.rotation.z = 0.2;
+  guide.add(gb, gh, stick);
+  grp.add(guide);
+  grp.visible = false;
+  scene.add(grp);
+  caravan = { grp, camels, guide, t: 0, toastedDay: -1 };
+}
+initCaravan();
+
+function updateCaravan(dtReal) {
+  if (!caravan) return;
+  const f = caravan;
+  const on = state.hour >= 7 && state.hour < 18;
+  f.grp.visible = on;
+  if (!on) return;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F42A} قافلة جمال عابرة في الصحرا الغربية — التجار جايين');
+  }
+  f.t += dtReal * 0.55;
+  const CX = -195, CZ = -100, RX = 20, RZ = 25;
+  for (let i = 0; i < f.camels.length; i++) {
+    const c = f.camels[i];
+    const a = f.t - i * 0.14;
+    const x = CX + Math.cos(a) * RX, z = CZ + Math.sin(a) * RZ;
+    // heading = tangent
+    const dx = -Math.sin(a) * RX, dz = Math.cos(a) * RZ;
+    c.g.position.set(x, 0, z);
+    c.g.rotation.y = Math.atan2(dx, dz) - Math.PI / 2;
+    const walk = f.t * 6 + c.phase;
+    for (let l = 0; l < c.legs.length; l++) {
+      c.legs[l].rotation.x = Math.sin(walk + (l % 2) * Math.PI) * 0.4;
+    }
+    c.g.position.y = Math.abs(Math.sin(walk * 0.5)) * 0.06;
+  }
+  const ga = f.t + 0.1;
+  f.guide.position.set(CX + Math.cos(ga) * (RX + 2.5), 0, CZ + Math.sin(ga) * (RZ + 2.5));
+  f.guide.rotation.y = Math.atan2(-Math.sin(ga) * (RX + 2.5), Math.cos(ga) * (RZ + 2.5)) - Math.PI / 2;
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10019,6 +10114,7 @@ function animate() {
   updateCamp(dtReal);
   updateFort(dtReal);
   updateNubia(dtReal);
+  updateCaravan(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
