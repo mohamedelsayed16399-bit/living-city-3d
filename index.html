@@ -6718,6 +6718,76 @@ function updateSufiShow(dtReal) {
 }
 initSufiShow();
 
+// R83: wedding procession (موكب فرح) cruising the corniche road x=13, 19-22h
+let wedding = null;
+function initWedding() {
+  if (wedding) return;
+  const carsW = [];
+  const cols = [0xffffff, 0xd43a2f, 0x2f6fed, 0xf2b02e, 0x222831];
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.65, 2.2), new THREE.MeshLambertMaterial({ color: cols[i] }));
+    body.position.y = 0.45;
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.5, 1.1), new THREE.MeshLambertMaterial({ color: i === 0 ? 0xffffff : cols[i] }));
+    cab.position.set(0, 0.95, 0.15);
+    g.add(body, cab);
+    // ribbons crossing the hood in V shape
+    const ribM = new THREE.MeshBasicMaterial({ color: i === 0 ? 0xe85a9a : 0xffe9a0 });
+    for (const sgn of [-1, 1]) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 1.15), ribM);
+      rib.position.set(sgn * 0.22, 0.79, -0.85);
+      rib.rotation.y = sgn * 0.35;
+      g.add(rib);
+    }
+    if (i === 0) {
+      // flower bouquet on the bride car hood
+      const flM = [0xe85a9a, 0xffe9a0, 0xffffff];
+      for (let f = 0; f < 5; f++) {
+        const fl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), new THREE.MeshBasicMaterial({ color: flM[f % 3] }));
+        fl.position.set((f % 2 ? 0.12 : -0.12) * (1 + f * 0.15), 0.85, -0.7 - f * 0.12);
+        g.add(fl);
+      }
+    }
+    // hazard blinkers
+    const hzM = new THREE.MeshBasicMaterial({ color: 0xffa02f });
+    const hz = [];
+    for (const sgn of [-1, 1]) {
+      const hzm = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), hzM);
+      hzm.position.set(sgn * 0.5, 0.55, 1.12);
+      g.add(hzm);
+      hz.push(hzm);
+    }
+    g.visible = false;
+    scene.add(g);
+    carsW.push({ g, hz, gap: i * 5.2 });
+  }
+  wedding = { cars: carsW, t: 0, toastedDay: -1 };
+}
+function updateWedding(dtReal) {
+  if (!wedding) return;
+  const w = wedding;
+  w.t += dtReal;
+  const h = state.hour;
+  const on = h >= 19 && h < 22;
+  if (on && w.toastedDay !== state.day) {
+    w.toastedDay = state.day;
+    toast("🚗💐 موكب فرح على الكورنيش — بالبركة يا عريس!");
+  }
+  const blink = Math.sin(w.t * 7) > 0;
+  for (const c of w.cars) {
+    c.g.visible = on;
+    if (!on) continue;
+    for (const hzm of c.hz) hzm.visible = blink;
+    // slow cruise: south on lane x=15.5 then wrap north edge
+    const s = ((w.t * 3.4 - c.gap) % 230 + 230) % 230;
+    const z = 108 - s;
+    c.g.position.set(15.5, 0, z);
+    c.g.rotation.y = Math.PI; // heading south (-z)
+  }
+}
+initWedding();
+
+
 
 
 
@@ -6969,6 +7039,7 @@ function animate() {
   updateRiverFun(dtReal);
   updateParagliders(dtReal);
   updateSufiShow(dtReal);
+  updateWedding(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
