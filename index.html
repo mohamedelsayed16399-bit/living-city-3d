@@ -11156,7 +11156,164 @@ function updateDrive(dtReal) {
   drive.panel.innerHTML = html;
 }
 
-window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R134: CITY COUNCIL - tax rate, police/fire/health budgets with real consequences, and a quest log with rewards
+const COUNCIL_KEY = 'livingCityCouncil';
+const council = (() => {
+  const c = { tax: 10, police: 1, fire: 1, health: 1, crimeP: 0, crimes: 0, fires: 0, done: {}, open: false, lastDay: 1, lastNet: 0, acc: 0, bankrupt: false };
+  try { const r = JSON.parse(localStorage.getItem(COUNCIL_KEY) || 'null'); if (r) { for (const k of ['tax','police','fire','health','crimes','fires']) if (typeof r[k] === 'number') c[k] = r[k]; if (r.done) c.done = r.done; } } catch (e) {}
+  return c;
+})();
+const COUNCIL_COST = { police: 40, fire: 30, health: 35 };
+const COUNCIL_LV = ['مقفول', 'أساسي', 'ممتاز', 'نخبة'];
+function councilSave() { try { localStorage.setItem(COUNCIL_KEY, JSON.stringify({ tax: council.tax, police: council.police, fire: council.fire, health: council.health, crimes: council.crimes, fires: council.fires, done: council.done })); } catch (e) {} }
+function councilHappyMod() {
+  let m = 0;
+  if (council.tax > 15) m -= (council.tax - 15) * 1.4;
+  if (council.tax < 8) m += (8 - council.tax) * 0.8;
+  m += [-8, 0, 2, 4][council.health];
+  m += [-2, 0, 1, 2][council.police];
+  m -= council.crimeP;
+  return Math.round(m);
+}
+// happiness now reflects council decisions
+const _recalcOrig = recalcStats;
+recalcStats = function () {
+  _recalcOrig();
+  state.happiness = Math.max(5, Math.min(99, state.happiness + councilHappyMod()));
+  const e = document.getElementById('happyTxt'); if (e) e.textContent = state.happiness + '%';
+};
+// fires have a repair bill that depends on the fire service
+const _startFireOrig = startFire;
+startFire = function () {
+  const ok = _startFireOrig();
+  if (ok) {
+    const bill = [450, 260, 120, 40][council.fire];
+    state.money -= bill; council.fires++;
+    document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+    toast('🔥 حريق! فاتورة الإصلاح -' + bill + ' (مطافي: ' + COUNCIL_LV[council.fire] + ')', 3400);
+    councilSave();
+  }
+  return ok;
+};
+function councilCount(t) { let n = 0; for (const r of state.plots.values()) if (r.type === t) n++; return n; }
+const COUNCIL_QUESTS = [
+  { id: 'q1', t: 'ابني 3 بيوت', r: 300, v: () => councilCount('house'), g: 3 },
+  { id: 'q2', t: 'وصّل سكان المدينة 100', r: 500, v: () => state.population, g: 100 },
+  { id: 'q3', t: 'ابني 5 حدايق', r: 400, v: () => councilCount('park'), g: 5 },
+  { id: 'q4', t: 'وصّل 3 ركّاب بالتاكسي 🚕', r: 350, v: () => drive.stats.n, g: 3 },
+  { id: 'q5', t: 'ابني مستشفى ومدرسة ومسجد', r: 700, v: () => (councilCount('hospital') > 0) + (councilCount('school') > 0) + (councilCount('mosque') > 0), g: 3 },
+  { id: 'q6', t: 'سعادة الناس 80% أو أكتر', r: 600, v: () => state.happiness || 0, g: 80 },
+  { id: 'q7', t: 'عدّي 10 أيام', r: 500, v: () => state.day, g: 10 },
+  { id: 'q8', t: 'وصّل السكان 300', r: 1500, v: () => state.population, g: 300 },
+  { id: 'q9', t: 'اجمع 10000 جنيه', r: 1000, v: () => Math.floor(state.money), g: 10000 },
+  { id: 'q10', t: 'شرطة ومطافي ورعاية صحية كلهم "نخبة"', r: 1200, v: () => (council.police === 3) + (council.fire === 3) + (council.health === 3), g: 3 }
+];
+function councilEstimate() {
+  const base = Math.round((state.population * 3 + state.jobs * 2) * (0.7 + (state.happiness || 60) / 200));
+  const taxAdj = Math.round(base * (council.tax / 10 - 1));
+  const scale = 1 + state.population / 300;
+  const cost = Math.round((council.police * COUNCIL_COST.police + council.fire * COUNCIL_COST.fire + council.health * COUNCIL_COST.health) * scale);
+  return { base, taxAdj, cost, net: base + taxAdj - cost };
+}
+function councilDay() {
+  const e = councilEstimate();
+  state.money += e.taxAdj - e.cost;
+  council.lastNet = e.net;
+  let msg = '🏛️ ميزانية اليوم: ' + (e.net >= 0 ? '+' : '') + e.net;
+  // crime
+  council.crimeP = Math.max(0, council.crimeP - 1.5);
+  if (state.population > 20) {
+    const p = [0.75, 0.35, 0.15, 0.04][council.police];
+    if (Math.random() < p) {
+      const loss = Math.round(Math.min(Math.max(state.money, 0) * 0.06, 120 + state.population));
+      state.money -= loss; council.crimes++; council.crimeP = Math.min(6, council.crimeP + 3);
+      msg += ' | 🚨 سرقة -' + loss;
+    }
+  }
+  // a weak fire service invites fires
+  if (!fire && council.fire < 2 && state.plots.size > 4 && Math.random() < [0.5, 0.2][council.fire]) startFire();
+  // bankruptcy: services shut down until the treasury recovers
+  if (state.money < 0 && !council.bankrupt) {
+    council.bankrupt = true; council.police = council.fire = council.health = 0;
+    msg += ' | 💸 إفلاس! الخدمات اتقفلت';
+  } else if (state.money > 300) council.bankrupt = false;
+  toast(msg, 3600);
+  document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+  recalcStats(); councilSave(); councilRender();
+}
+function updateCouncil(dtReal) {
+  if (state.day !== council.lastDay) {
+    const n = state.day - council.lastDay; council.lastDay = state.day;
+    if (n > 0 && n < 5) councilDay();
+  }
+  council.acc += dtReal;
+  if (council.acc < 1) return;
+  council.acc = 0;
+  for (const q of COUNCIL_QUESTS) {
+    if (council.done[q.id]) continue;
+    if (q.v() >= q.g) {
+      council.done[q.id] = 1; state.money += q.r;
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+      toast('🏆 مهمة اتكملت: ' + q.t + ' (+' + q.r + ' 💰)', 3600);
+      councilSave(); councilRender();
+    }
+  }
+  if (council.open) councilRender();
+}
+let councilRenderT = 0;
+function councilRender() {
+  const p = document.getElementById('councilPanel'); if (!p || !council.open) return;
+  const e = councilEstimate();
+  let h = '<div class="ch">🏛️ مجلس المدينة <span id="councilX">✕</span></div>';
+  h += '<div class="cr"><span>الضريبة</span><span><button data-c="tax-">−</button> <b>' + council.tax + '%</b> <button data-c="tax+">+</button></span></div>';
+  for (const [k, n] of [['police', '👮 شرطة'], ['fire', '🚒 مطافي'], ['health', '🏥 رعاية صحية']])
+    h += '<div class="cr"><span>' + n + '</span><span><button data-c="' + k + '-">−</button> <b>' + COUNCIL_LV[council[k]] + '</b> <button data-c="' + k + '+">+</button></span></div>';
+  h += '<div class="cs">دخل ' + e.base + ' · ضريبة ' + (e.taxAdj >= 0 ? '+' : '') + e.taxAdj + ' · خدمات -' + e.cost + '<br><b style="color:' + (e.net >= 0 ? '#7CFC9a' : '#ff8a80') + '">صافي اليوم: ' + (e.net >= 0 ? '+' : '') + e.net + '</b> · تأثير السعادة ' + (councilHappyMod() >= 0 ? '+' : '') + councilHappyMod() + '%</div>';
+  h += '<div class="cs">سرقات: ' + council.crimes + ' · حرائق: ' + council.fires + '</div>';
+  h += '<div class="ch" style="margin-top:6px">🏆 المهام</div>';
+  for (const q of COUNCIL_QUESTS) {
+    const d = !!council.done[q.id], v = Math.min(q.g, q.v());
+    h += '<div class="cq' + (d ? ' d' : '') + '"><span>' + (d ? '✅ ' : '⬜ ') + q.t + '</span><span>' + (d ? 'تم' : v + '/' + q.g + ' · +' + q.r) + '</span></div>';
+  }
+  p.innerHTML = h;
+}
+(function councilUI() {
+  const css = document.createElement('style');
+  css.textContent = '#councilPanel{position:fixed;right:62px;top:62px;width:290px;max-height:calc(100vh - 150px);overflow:auto;padding:10px 12px;border-radius:14px;background:rgba(18,24,38,.93);color:#fff;font-family:Cairo,sans-serif;font-size:13px;line-height:1.6;border:1px solid rgba(255,255,255,.18);z-index:25;display:none;direction:rtl}' +
+    '#councilPanel .ch{font-weight:700;color:#ffd766;display:flex;justify-content:space-between;margin-bottom:4px}#councilX{cursor:pointer;padding:4px 12px;font-size:16px}' +
+    '#councilPanel .cr{display:flex;justify-content:space-between;align-items:center;margin:3px 0}' +
+    '#councilPanel button{width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font-size:16px;cursor:pointer}' +
+    '#councilPanel .cs{font-size:12px;color:#cfd8e8;margin:5px 0;padding:5px 7px;background:rgba(255,255,255,.06);border-radius:8px}' +
+    '#councilPanel .cq{display:flex;justify-content:space-between;gap:6px;font-size:12px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.06)}#councilPanel .cq.d{opacity:.55}' +
+    '#councilBtn.on{background:#5b8cff}@media(max-width:700px){#councilPanel{right:6px;left:6px;width:auto;top:56px;max-height:calc(100vh - 190px)}}';
+  document.head.appendChild(css);
+  const p = document.createElement('div'); p.id = 'councilPanel'; document.body.appendChild(p);
+  const b = document.createElement('button');
+  b.className = 'sbtn'; b.id = 'councilBtn'; b.title = 'مجلس المدينة: ضرائب وخدمات ومهام'; b.textContent = '🏛️';
+  document.getElementById('sidebtns').appendChild(b);
+  function toggle(force) {
+    council.open = force !== undefined ? force : !council.open;
+    p.style.display = council.open ? 'block' : 'none'; b.classList.toggle('on', council.open);
+    councilRender();
+  }
+  b.addEventListener('click', e => { e.stopPropagation(); toggle(); });
+  p.addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.target.id === 'councilX') { toggle(false); return; }
+    const c = e.target.getAttribute && e.target.getAttribute('data-c'); if (!c) return;
+    const k = c.slice(0, -1), d = c.slice(-1) === '+' ? 1 : -1;
+    if (k === 'tax') council.tax = Math.max(0, Math.min(30, council.tax + d * 2));
+    else {
+      if (council.bankrupt && d > 0 && state.money < 300) { toast('الخزنة فاضية، مش هينفع تفتح خدمات دلوقتي'); return; }
+      council[k] = Math.max(0, Math.min(3, council[k] + d));
+    }
+    recalcStats(); councilSave(); councilRender();
+  });
+  council.toggle = toggle;
+})();
+recalcStats();
+window.__city = { council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
@@ -11289,6 +11446,7 @@ function animate() {
   updateGazelles(dtReal);
   updateEgrets(dtReal);
   updateDrive(dtReal);
+  updateCouncil(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
