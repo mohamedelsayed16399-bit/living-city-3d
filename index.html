@@ -6591,6 +6591,59 @@ function updateRiverFun(dtReal) {
 }
 initRiverFun();
 
+// R81: sunset paragliders (مظلات الغروب) circling over the river 16-19h
+let paragliders = null;
+function initParagliders() {
+  if (paragliders) return;
+  const cols = [0xff7a2f, 0xd94fd0, 0x35c5e8];
+  const wings = [];
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.Group();
+    const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.9, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: cols[i], side: THREE.DoubleSide }));
+    canopy.scale.set(1.25, 0.45, 0.62);
+    const pilot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.65, 6), new THREE.MeshLambertMaterial({ color: 0x333340 }));
+    pilot.position.y = -1.7;
+    const pHead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+    pHead.position.y = -1.25;
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-1.6, -0.15, 0), new THREE.Vector3(-0.15, -1.35, 0),
+      new THREE.Vector3(1.6, -0.15, 0), new THREE.Vector3(0.15, -1.35, 0),
+    ]);
+    const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0xdddddd }));
+    g.add(canopy, pilot, pHead, lines);
+    g.visible = false;
+    scene.add(g);
+    wings.push({ g, ph: i * 2.1, speed: 0.16 + i * 0.02, rad: 14 + i * 4, alt: 17 + i * 3.2, cz: -10 + i * 22 });
+  }
+  paragliders = { wings, t: 0, toastedDay: -1 };
+}
+function updateParagliders(dtReal) {
+  if (!paragliders) return;
+  const p = paragliders;
+  p.t += dtReal;
+  const h = state.hour;
+  const on = h >= 16 && h < 19;
+  if (on && p.toastedDay !== state.day) {
+    p.toastedDay = state.day;
+    toast("🪂 مظلات الغروب فوق النيل — شوف السما!");
+  }
+  for (const w of p.wings) {
+    w.g.visible = on;
+    if (!on) continue;
+    const a = p.t * w.speed + w.ph;
+    const x = -13 + Math.cos(a) * w.rad * 0.35;
+    const z = w.cz + Math.sin(a) * w.rad;
+    const y = w.alt + Math.sin(p.t * 0.5 + w.ph) * 2.2;
+    const dx = -Math.sin(a) * w.rad * 0.35, dz = Math.cos(a) * w.rad;
+    w.g.position.set(x, y, z);
+    w.g.rotation.y = Math.atan2(dx, dz);
+    w.g.rotation.z = -0.32;
+    w.g.rotation.x = Math.sin(p.t * 0.8 + w.ph) * 0.06;
+  }
+}
+initParagliders();
+
+
 
 
 
@@ -6838,6 +6891,7 @@ function animate() {
   updateFoodCarts(dtReal);
   updatePigeonTowers(dtReal);
   updateRiverFun(dtReal);
+  updateParagliders(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
