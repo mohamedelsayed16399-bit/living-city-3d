@@ -9007,6 +9007,69 @@ function updateHeli(dtReal) {
   f.navR.material.color.setHex(Math.sin(f.t * 6 + 1.5) > 0 ? 0x5aff8a : 0x10551f);
 }
 
+// R109: Cairo Tower on the west bank — tallest landmark, glowing restaurant ring at night
+let cairotower = null;
+function initCairoTower() {
+  if (cairotower) return;
+  const grp = new THREE.Group();
+  const TX = -124, TZ = -30;
+  const concM = new THREE.MeshLambertMaterial({ color: 0xd9d0c0 });
+  const conc2 = new THREE.MeshLambertMaterial({ color: 0xc9c0b0 });
+  // base plaza
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.5, 0.4, 16), new THREE.MeshLambertMaterial({ color: 0xcfc4ae }));
+  plaza.position.set(TX, 0.2, TZ);
+  grp.add(plaza);
+  // base
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.6, 2, 12), conc2);
+  base.position.set(TX, 1.2, TZ);
+  grp.add(base);
+  // tapered shaft
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.4, 20, 12), concM);
+  shaft.position.set(TX, 12.2, TZ);
+  grp.add(shaft);
+  // lattice ribs
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.22, 20, 0.22), conc2);
+    rib.position.set(TX + Math.cos(a) * 1.95, 12.2, TZ + Math.sin(a) * 1.95);
+    grp.add(rib);
+  }
+  // restaurant ring
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.0, 2.2, 16), conc2);
+  ring.position.set(TX, 23.3, TZ);
+  grp.add(ring);
+  // restaurant windows (glow at night)
+  const winM = new THREE.MeshBasicMaterial({ color: 0x3a4a5a });
+  const winRing = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.45, 1.1, 16, 1, true), winM);
+  winRing.position.set(TX, 23.4, TZ);
+  grp.add(winRing);
+  // lotus crown
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(2.2, 2.6, 12), concM);
+  crown.position.set(TX, 25.7, TZ);
+  grp.add(crown);
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.4, 6), conc2);
+  spire.position.set(TX, 28.4, TZ);
+  grp.add(spire);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3a3a }));
+  beacon.position.set(TX, 30.2, TZ);
+  grp.add(beacon);
+  scene.add(grp);
+  cairotower = { grp, beacon, winRing, t: 0, toastedDay: -1 };
+}
+initCairoTower();
+
+function updateCairoTower(dtReal) {
+  if (!cairotower) return;
+  const f = cairotower;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F5FC} برج القاهرة واقف على الضفة الغربية — أعلى نقطة في المدينة!');
+  }
+  f.beacon.material.color.setHex(Math.sin(f.t * 2.4) > 0 ? 0xff3a3a : 0x551010);
+  f.winRing.material.color.setHex(0x3a4a5a).lerp(new THREE.Color(0xffd98a), nightGlow * 0.95);
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -9116,6 +9179,7 @@ function animate() {
   updateFooty(dtReal);
   updateBand(dtReal);
   updateHeli(dtReal);
+  updateCairoTower(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
