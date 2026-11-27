@@ -9236,6 +9236,69 @@ function updateNightMarket(dtReal) {
   }
 }
 
+// R112: felucca regatta — 4 colored-sail feluccas racing on the Nile, 14-17h
+let regatta = null;
+function initRegatta() {
+  if (regatta) return;
+  const grp = new THREE.Group();
+  const sailCols = [0xe2544a, 0xe8b93a, 0x3aa860, 0x3a78c2];
+  const hullM = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
+  const boats = [];
+  for (let i = 0; i < 4; i++) {
+    const b = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.4, 0.7), hullM);
+    hull.position.y = 0.25;
+    b.add(hull);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.7, 5), new THREE.MeshLambertMaterial({ color: 0x4a3626 }));
+    mast.position.y = 1.6;
+    b.add(mast);
+    const sailShape = new THREE.Shape();
+    sailShape.moveTo(0, 0); sailShape.lineTo(1.9, 0.55); sailShape.lineTo(0.12, 2.0); sailShape.closePath();
+    const sail = new THREE.Mesh(new THREE.ShapeGeometry(sailShape), new THREE.MeshLambertMaterial({ color: sailCols[i], side: THREE.DoubleSide }));
+    sail.position.set(0, 0.8, 0);
+    b.add(sail);
+    grp.add(b);
+    boats.push({ g: b, z: -80 - i * 4, speed: 2.4 + i * 0.22, lane: RIVER_X - 4 + i * 1.9, finished: false });
+  }
+  grp.visible = false;
+  scene.add(grp);
+  regatta = { grp, boats, t: 0, toastedDay: -1, winnerToast: false };
+}
+initRegatta();
+
+function updateRegatta(dtReal) {
+  if (!regatta) return;
+  const f = regatta;
+  const on = state.hour >= 14 && state.hour < 17;
+  f.grp.visible = on;
+  if (!on) { f.winnerToast = false; return; }
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{26F5} سباق الفلوكة شغال في النيل — شجع مين؟');
+  }
+  let allDone = true;
+  let leader = null;
+  for (const bt of f.boats) {
+    if (bt.z < 84) {
+      allDone = false;
+      bt.z += bt.speed * dtReal;
+    } else if (!leader) leader = bt;
+    bt.g.position.set(bt.lane + Math.sin(f.t * 0.7 + bt.lane) * 0.3, 0.14 + Math.sin(f.t * 2.1 + bt.lane) * 0.05, bt.z);
+    bt.g.rotation.z = Math.sin(f.t * 1.6 + bt.lane) * 0.05;
+  }
+  if (leader && !f.winnerToast) {
+    f.winnerToast = true;
+    const names = ['الحمرا', 'الصفرا', 'الخضرا', 'الزرقا'];
+    const idx = f.boats.indexOf(leader);
+    toast('\u{1F3C1} الفلوكة ' + names[idx] + ' كسبت السباق!');
+  }
+  if (allDone) {
+    for (let i = 0; i < f.boats.length; i++) { f.boats[i].z = -80 - i * 4; }
+    f.winnerToast = false;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -9348,6 +9411,7 @@ function animate() {
   updateCairoTower(dtReal);
   updatePedal(dtReal);
   updateNightMarket(dtReal);
+  updateRegatta(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
