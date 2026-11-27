@@ -10439,6 +10439,122 @@ function updateIftarCannon(dtReal) {
   }
 }
 
+
+// R125: drone light show over the Nile, 21:00-22:30, morphing shapes
+const droneShow = (() => {
+  const N = 120;
+  const CX = -13, CY = 40, CZ = 20; // above the river, shapes face the east-bank corniche
+  function crescent() {
+    const pts = [];
+    for (let i = 0; i < 80; i++) {
+      const a = (-125 + i * (250 / 79)) * Math.PI / 180;
+      pts.push([Math.cos(a) * 9.5, Math.sin(a) * 9.5]);
+    }
+    for (let i = 0; i < 40; i++) {
+      const a = (125 - i * (250 / 39)) * Math.PI / 180;
+      pts.push([3.5 + Math.cos(a) * 7, Math.sin(a) * 7]);
+    }
+    return pts;
+  }
+  function star() {
+    const v = [];
+    for (let i = 0; i < 5; i++) {
+      const ao = (-90 + i * 72) * Math.PI / 180, ai = (-90 + i * 72 + 36) * Math.PI / 180;
+      v.push([Math.cos(ao) * 10, Math.sin(ao) * 10]);
+      v.push([Math.cos(ai) * 4.3, Math.sin(ai) * 4.3]);
+    }
+    const pts = [];
+    for (let e = 0; e < 10; e++) {
+      const [x1, y1] = v[e], [x2, y2] = v[(e + 1) % 10];
+      for (let k = 0; k < 12; k++) pts.push([x1 + (x2 - x1) * k / 12, y1 + (y2 - y1) * k / 12]);
+    }
+    return pts;
+  }
+  function pyramid() {
+    const pts = [];
+    for (let k = 0; k < 50; k++) pts.push([-9 + 18 * k / 49, -5]);
+    for (let k = 0; k < 35; k++) pts.push([-9 + 9 * k / 34, -5 + 12 * k / 34]);
+    for (let k = 0; k < 35; k++) pts.push([9 - 9 * k / 34, -5 + 12 * k / 34]);
+    return pts;
+  }
+  function heart() {
+    const pts = [];
+    for (let i = 0; i < 120; i++) {
+      const t = i / 120 * Math.PI * 2;
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      pts.push([x * 0.62, y * 0.62]);
+    }
+    return pts;
+  }
+  function wave() {
+    const pts = [];
+    for (let i = 0; i < 120; i++) {
+      const z = -13 + 26 * i / 119;
+      pts.push([z, Math.sin(z * 0.5) * 4]);
+    }
+    return pts;
+  }
+  const shapes = [
+    { pts: crescent(), color: new THREE.Color(0xffd766) },
+    { pts: star(), color: new THREE.Color(0x69f0ae) },
+    { pts: pyramid(), color: new THREE.Color(0xffa040) },
+    { pts: heart(), color: new THREE.Color(0xff5f7a) },
+    { pts: wave(), color: new THREE.Color(0x59d6ff) }
+  ];
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  // start on shape 0
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = CX; pos[i * 3 + 1] = CY + shapes[0].pts[i][1]; pos[i * 3 + 2] = CZ + shapes[0].pts[i][0];
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({ size: 1.1, vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true });
+  const pts = new THREE.Points(geo, mat);
+  pts.frustumCulled = false;
+  scene.add(pts);
+  return { pts, shapes, N, CX, CY, CZ, cur: 0, morphT: 1, from: null, toastedDay: -1 };
+})();
+function updateDroneShow(dtReal) {
+  const d = droneShow;
+  const on = state.hour >= 21 && state.hour < 22.5;
+  d.pts.visible = on;
+  if (!on) return;
+  if (d.toastedDay !== state.day && state.hour < 21.5) {
+    d.toastedDay = state.day;
+    toast('\u{2728} عرض الدرون بدأ فوق النيل — 120 درون بيرسموا في السما');
+  }
+  d.morphT += dtReal / 3;
+  if (d.morphT >= 1) {
+    d.morphT = 1;
+    d.holdT = (d.holdT || 0) + dtReal;
+    if (d.holdT > 11) {
+      d.holdT = 0;
+      d.morphT = 0;
+      d.from = d.pts.geometry.attributes.position.array.slice();
+      d.cur = (d.cur + 1) % d.shapes.length;
+    }
+  }
+  if (!d.from) d.from = d.pts.geometry.attributes.position.array.slice();
+  const k = d.morphT >= 1 ? 1 : (d.morphT * d.morphT * (3 - 2 * d.morphT));
+  const target = d.shapes[d.cur].pts, c = d.shapes[d.cur].color;
+  const posA = d.pts.geometry.attributes.position.array;
+  const colA = d.pts.geometry.attributes.color.array;
+  const t = performance.now() / 1000;
+  for (let i = 0; i < d.N; i++) {
+    const tx = d.CX, ty = d.CY + target[i][1] + Math.sin(t * 2 + i) * 0.12, tz = d.CZ + target[i][0];
+    posA[i * 3] = d.from[i * 3] + (tx - d.from[i * 3]) * k;
+    posA[i * 3 + 1] = d.from[i * 3 + 1] + (ty - d.from[i * 3 + 1]) * k;
+    posA[i * 3 + 2] = d.from[i * 3 + 2] + (tz - d.from[i * 3 + 2]) * k;
+    const pulse = 0.72 + Math.sin(t * 3 + i * 1.7) * 0.28;
+    colA[i * 3] = c.r * pulse; colA[i * 3 + 1] = c.g * pulse; colA[i * 3 + 2] = c.b * pulse;
+  }
+  d.pts.geometry.attributes.position.needsUpdate = true;
+  d.pts.geometry.attributes.color.needsUpdate = true;
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10564,6 +10680,7 @@ function animate() {
   updateMinaretGlow(dtReal);
   updateJetSkis(dtReal);
   updateIftarCannon(dtReal);
+  updateDroneShow(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
