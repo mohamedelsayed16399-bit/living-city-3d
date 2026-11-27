@@ -11925,7 +11925,92 @@ updateDrive = function (dtReal) {
   drive.panel.innerHTML = html;
 };
 COUNCIL_QUESTS.push({ id: 'q16', t: 'اقبض على 3 حرامية بنفسك 🚓', r: 700, v: () => police.stats.caught, g: 3 });
-window.__city = { police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R141: AMBULANCE MODE - pick up a patient, rush him to the hospital before the clock runs out; gentle driving = bonus
+const ambul = (() => {
+  const mk = (col) => { const g = new THREE.Group(); g.visible = false; scene.add(g);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 1.2, 8), new THREE.MeshLambertMaterial({ color: 0x555555 })); b.position.y = 0.9;
+    const h = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), new THREE.MeshLambertMaterial({ color: 0xd9a066 })); h.position.y = 1.8;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 18, 10, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 9;
+    g.add(b, h, beam); return g; };
+  const hosp = new THREE.Group(); hosp.visible = false; scene.add(hosp);
+  const hb = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 5), new THREE.MeshLambertMaterial({ color: 0xffffff })); hb.position.y = 1.5;
+  const cr1 = new THREE.Mesh(new THREE.BoxGeometry(3, 0.5, 0.2), new THREE.MeshBasicMaterial({ color: 0xe53935 })); cr1.position.set(0, 3.6, 0);
+  const cr2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 0.2), new THREE.MeshBasicMaterial({ color: 0xe53935 })); cr2.position.set(0, 3.6, 0);
+  const hbeam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 22, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x4caf50, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); hbeam.position.y = 11;
+  hosp.add(hb, cr1, cr2, hbeam);
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'ambulBtn'; btn.title = 'وضع الإسعاف: خد المريض للمستشفى'; btn.textContent = '🚑';
+  document.getElementById('sidebtns').appendChild(btn);
+  const css = document.createElement('style'); css.textContent = '#ambulBtn.on{background:#e53935;color:#fff} #sidebtns{max-height:calc(100vh - 190px);flex-wrap:wrap;align-content:flex-start} @media(max-width:700px){#sidebtns{max-height:calc(100vh - 330px)}}'; document.head.appendChild(css);
+  return { pat: mk(0xff5252), hosp, btn, on: false, ph: 'idle', prog: 0, t: 0, wait: 0, time: 0, jolt: 0, p: null, h: null, stats: { saved: 0, lost: 0, earned: 0 } };
+})();
+function ambulColor(on) {
+  const body = drive.car.children[0].material, cabin = drive.car.children[2].material;
+  if (!rescue.orig) rescue.orig = [body.color.getHex(), cabin.color.getHex()];
+  body.color.setHex(on ? 0xffffff : rescue.orig[0]); cabin.color.setHex(on ? 0xffcdd2 : rescue.orig[1]);
+}
+function ambulNew() {
+  const p = driveRandomSpot(50, 130, drive.x, drive.z); const h = driveRandomSpot(70, 150, p.x, p.z);
+  ambul.p = p; ambul.h = h; ambul.ph = 'pick'; ambul.prog = 0; ambul.jolt = 0;
+  ambul.time = 40 + Math.hypot(p.x - drive.x, p.z - drive.z) / 8;
+  ambul.pat.visible = true; ambul.pat.position.set(p.x, 0, p.z); ambul.hosp.visible = false;
+  toast('🚑 بلاغ إسعاف! روح للمريض (العمود الأحمر) وقف جنبه');
+}
+function ambulStart() {
+  if (drive.active) driveStop(); if (walk.active) walkStop();
+  driveStart(); ambul.on = true; ambulColor(true);
+  drive.m.phase = 'idle'; drive.pick.g.visible = false; drive.dest.g.visible = false; drive.pax.visible = false;
+  drive.btn.classList.remove('on'); ambul.btn.classList.add('on'); rescue.bar.style.display = 'block';
+  ambulNew();
+}
+function ambulStop() {
+  if (!ambul.on) return;
+  ambul.on = false; ambulColor(false); ambul.pat.visible = false; ambul.hosp.visible = false; ambul.ph = 'idle';
+  rescue.bar.style.display = 'none'; ambul.btn.classList.remove('on');
+}
+const _driveStopA = driveStop;
+driveStop = function () { ambulStop(); _driveStopA(); };
+ambul.btn.addEventListener('click', e => { e.stopPropagation(); if (ambul.on) driveStop(); else ambulStart(); });
+const _updateDriveA = updateDrive;
+updateDrive = function (dtReal) {
+  _updateDriveA(dtReal);
+  if (!ambul.on || !drive.active) return;
+  const dt = Math.min(dtReal, 0.05); ambul.t += dt;
+  let html = '<b>🚑 إسعاف</b> · ' + Math.round(Math.abs(drive.v) * 4) + ' كم/س<br>';
+  const fin = (ok) => {
+    if (ok) { const gain = 250 + Math.round(ambul.time * 4) + Math.max(0, 100 - Math.round(ambul.jolt) * 10); state.money += gain; ambul.stats.saved++; ambul.stats.earned += gain;
+      council.healthP = (council.healthP || 0); toast('🏥 وصّلت المريض! +' + gain + ' 💰' + (ambul.jolt < 3 ? ' قيادة هادية ⭐' : ''), 3000); }
+    else { state.money -= 150; ambul.stats.lost++; toast('⏰ الوقت خلص: -150 💰', 3000); }
+    document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+    ambul.ph = 'idle'; ambul.wait = 3; ambul.pat.visible = false; ambul.hosp.visible = false; rescue.bar.firstChild.style.width = '0%';
+  };
+  if (ambul.ph === 'idle') { ambul.wait -= dt; html += 'مفيش بلاغ... استنى'; if (ambul.wait <= 0) ambulNew(); }
+  else {
+    ambul.time -= dt;
+    const tg = ambul.ph === 'pick' ? ambul.p : ambul.h;
+    const dx = tg.x - drive.x, dz = tg.z - drive.z, dist = Math.hypot(dx, dz);
+    if (ambul.ph === 'carry' && Math.abs(drive.v) > 14) ambul.jolt += dt * (Math.abs(drive.v) - 14) / 6;
+    let rel = Math.atan2(dx, dz) - drive.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+    html += (ambul.ph === 'pick' ? '🧑‍⚕️ المريض' : '🏥 المستشفى') + ' <span style="display:inline-block;font-size:24px;transform:rotate(' + Math.round(-rel * 180 / Math.PI) + 'deg)">⬆️</span> ' + Math.round(dist) + ' م · ⏱ <b>' + Math.max(0, Math.ceil(ambul.time)) + '</b> ث<br>';
+    const near = dist < 7 && Math.abs(drive.v) < 12;
+    if (ambul.ph === 'pick') {
+      ambul.prog = near ? ambul.prog + dt / 1.5 : Math.max(0, ambul.prog - dt / 3);
+      rescue.bar.firstChild.style.width = Math.round(Math.min(1, ambul.prog) * 100) + '%';
+      html += near ? 'بتشيل المريض...' : 'وقف جنب المريض (أقل من 7 م)';
+      if (ambul.prog >= 1) { ambul.ph = 'carry'; ambul.pat.visible = false; ambul.hosp.visible = true; ambul.hosp.position.set(ambul.h.x, 0, ambul.h.z);
+        ambul.time = 25 + Math.hypot(ambul.h.x - drive.x, ambul.h.z - drive.z) / 8; ambul.prog = 0; rescue.bar.firstChild.style.width = '0%'; toast('🚑 المريض معاك! روح المستشفى (العمود الأخضر) بهدوء'); }
+    } else {
+      html += 'هزّات: <b>' + Math.round(ambul.jolt) + '</b> (اسواق تحت 56 كم/س)<br>' + (near ? 'وصلت!' : '');
+      if (near) { fin(true); }
+    }
+    if (ambul.ph !== 'idle' && ambul.time <= 0) fin(false);
+  }
+  html += '<br>أنقذت: <b>' + ambul.stats.saved + '</b> · فاتوا: <b>' + ambul.stats.lost + '</b> · كسب: <b>' + ambul.stats.earned + '</b>';
+  drive.panel.innerHTML = html;
+};
+COUNCIL_QUESTS.push({ id: 'q17', t: 'انقل 3 مرضى للمستشفى بالإسعاف 🚑', r: 700, v: () => ambul.stats.saved, g: 3 });
+window.__city = { ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
