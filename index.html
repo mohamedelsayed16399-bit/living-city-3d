@@ -8176,6 +8176,81 @@ function updateStorks(dtReal) {
   }
 }
 
+
+let dawnFish = null;
+function initDawnFish() {
+  if (dawnFish) return;
+  const grp = new THREE.Group();
+  const fishers = [];
+  const shirtCols = [0x4a6a9a, 0x6a8a5a, 0x9a5a4a, 0x5a5a6a, 0x8a7a4a];
+  const skinM = new THREE.MeshLambertMaterial({ color: 0xe8b98a });
+  for (let i = 0; i < 5; i++) {
+    const fz = 62 + i * 6;
+    const g = new THREE.Group();
+    // stool
+    const stool = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    stool.position.y = 0.2;
+    g.add(stool);
+    // seated body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.55, 0.32), new THREE.MeshLambertMaterial({ color: shirtCols[i] }));
+    body.position.y = 0.68;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), skinM);
+    head.position.y = 1.12;
+    g.add(head);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.2, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x8a2a2a }));
+    cap.position.y = 1.26;
+    g.add(cap);
+    // legs forward (seated, facing -x toward the river)
+    const legM = new THREE.MeshLambertMaterial({ color: 0x3a4152 });
+    for (const dz of [-0.12, 0.12]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.12), legM);
+      leg.position.set(-0.28, 0.42, dz);
+      g.add(leg);
+    }
+    // rod: thin cylinder angled over the water
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 3.4, 5), new THREE.MeshLambertMaterial({ color: 0x8a6a42 }));
+    rod.position.set(-1.2, 1.35, 0);
+    rod.rotation.z = -1.05;
+    g.add(rod);
+    // line from rod tip down into the water
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.6, 3), new THREE.MeshBasicMaterial({ color: 0xdadada }));
+    line.position.set(-2.8, 0.6, 0);
+    g.add(line);
+    // bucket
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.3, 8), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+    bucket.position.set(0.55, 0.15, 0.35);
+    g.add(bucket);
+    g.position.set(-6.5, 0.05, fz);
+    grp.add(g);
+    fishers.push({ g, rod, line, ph: i * 1.3 });
+  }
+  scene.add(grp);
+  dawnFish = { grp, fishers, t: 0, toastedDay: -1 };
+}
+initDawnFish();
+
+function updateDawnFish(dtReal) {
+  if (!dawnFish) return;
+  const f = dawnFish;
+  const on = state.hour >= 5 && state.hour < 7.5;
+  f.grp.visible = on;
+  if (!on) return;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F3A3} صيادين الفجر على الكورنيش — الطعم نزل الميه!');
+  }
+  for (const fs of f.fishers) {
+    // rod tip bobbing
+    fs.rod.rotation.z = -1.05 + Math.sin(f.t * 1.6 + fs.ph) * 0.06;
+    fs.line.rotation.z = Math.sin(f.t * 1.1 + fs.ph) * 0.05;
+    // occasional excited reel: quick bounce
+    const reel = Math.max(0, Math.sin(f.t * 0.5 + fs.ph * 2)) > 0.97 ? 1 : 0;
+    fs.g.position.y = 0.05 + reel * Math.abs(Math.sin(f.t * 14)) * 0.08;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -8274,6 +8349,7 @@ function animate() {
   updateOasis(dtReal);
   updateMahragan(dtReal);
   updateStorks(dtReal);
+  updateDawnFish(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
