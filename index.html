@@ -7581,6 +7581,91 @@ function initBenches() {
 // ============================== Main loop ==============================
 const clock = new THREE.Clock();
 let frames = 0, fpsT = 0;
+let pyramids = null;
+function initPyramids() {
+  if (pyramids) return;
+  const grp = new THREE.Group();
+  const desert = new THREE.Mesh(new THREE.PlaneGeometry(95, 280), new THREE.MeshLambertMaterial({ color: 0xd9c795 }));
+  desert.rotation.x = -Math.PI / 2;
+  desert.position.set(-184, 0.03, 0);
+  grp.add(desert);
+  const sandM = new THREE.MeshLambertMaterial({ color: 0xcbb27f });
+  const sandM2 = new THREE.MeshLambertMaterial({ color: 0xc0a472 });
+  const defs = [
+    { x: -168, z: -25, r: 30, h: 28, m: sandM },
+    { x: -186, z: 14, r: 26, h: 24, m: sandM2 },
+    { x: -152, z: -54, r: 14, h: 12, m: sandM }
+  ];
+  const pyr = [];
+  for (const d of defs) {
+    const p = new THREE.Mesh(new THREE.ConeGeometry(d.r, d.h, 4), d.m.clone());
+    p.position.set(d.x, d.h / 2, d.z);
+    p.rotation.y = Math.PI / 4;
+    grp.add(p);
+    pyr.push(p);
+  }
+  const camels = [];
+  const bodyM = new THREE.MeshLambertMaterial({ color: 0x9c6b3f });
+  const darkM = new THREE.MeshLambertMaterial({ color: 0x7a5230 });
+  for (let i = 0; i < 5; i++) {
+    const c = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 1.0), bodyM);
+    body.position.y = 1.6;
+    c.add(body);
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), darkM);
+    hump.position.set(0, 2.3, 0);
+    c.add(hump);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.4, 0.4), bodyM);
+    neck.position.set(0, 2.2, -0.9);
+    neck.rotation.x = 0.5;
+    c.add(neck);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.7), darkM);
+    head.position.set(0, 2.9, -1.35);
+    c.add(head);
+    const legs = [];
+    for (const pr of [[-0.42, -0.6], [0.42, -0.6], [-0.42, 0.6], [0.42, 0.6]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), darkM);
+      leg.position.set(pr[0], 0.55, pr[1]);
+      c.add(leg);
+      legs.push(leg);
+    }
+    const rider = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.7, 0.4), new THREE.MeshLambertMaterial({ color: i === 0 ? 0xe8e0d0 : 0x4a6a9a }));
+    rider.position.set(0, 2.9, 0.2);
+    c.add(rider);
+    c.position.set(-146, 0, 90 - i * 7);
+    grp.add(c);
+    camels.push({ g: c, legs, off: i * 1.7 });
+  }
+  scene.add(grp);
+  pyramids = { grp, pyr, camels, t: 0, z: 90, toastedDay: -1 };
+}
+initPyramids();
+
+function updatePyramids(dtReal) {
+  if (!pyramids) return;
+  const f = pyramids;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F42A} أهرامات الجيزة على الأفق — وقافلة الجمال ماشية!');
+  }
+  f.z -= dtReal * 1.1;
+  if (f.z < -95) f.z = 95;
+  for (let i = 0; i < f.camels.length; i++) {
+    const cm = f.camels[i];
+    cm.g.position.z = f.z - i * 7;
+    cm.g.position.y = Math.abs(Math.sin(f.t * 2.2 + cm.off)) * 0.08;
+    for (let l = 0; l < 4; l++) {
+      cm.legs[l].rotation.x = Math.sin(f.t * 4 + cm.off + (l % 2) * Math.PI) * 0.35;
+    }
+  }
+  const dusk = (state.hour >= 16 && state.hour < 19);
+  for (const p of f.pyr) {
+    p.material.emissive = p.material.emissive || new THREE.Color(0);
+    p.material.emissive.setHex(dusk ? 0x2a1404 : 0x000000);
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -7673,6 +7758,7 @@ function animate() {
   updateSandBarges(dtReal);
   updateSakka(dtReal);
   updateCairoEye(dtReal);
+  updatePyramids(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
