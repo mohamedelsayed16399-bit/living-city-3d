@@ -11313,7 +11313,75 @@ function councilRender() {
   council.toggle = toggle;
 })();
 recalcStats();
-window.__city = { council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R135: DECISION EVENTS - random city dilemmas with two choices, real money/happiness/economy consequences, plus a harder budget
+COUNCIL_COST.police = 55; COUNCIL_COST.fire = 42; COUNCIL_COST.health = 48;
+council.evMod = 0; council.evBoom = 0; council.evTaken = 0; council.evLast = 0;
+(function () { try { const r = JSON.parse(localStorage.getItem('livingCityDecisions') || 'null'); if (r) { council.evTaken = r.taken || 0; } } catch (e) {} })();
+const _hm = councilHappyMod;
+councilHappyMod = function () { return _hm() + Math.round(council.evMod || 0); };
+const _est = councilEstimate;
+councilEstimate = function () {
+  const e = _est();
+  if (council.evBoom) { const bonus = Math.round(e.base * council.evBoom); e.taxAdj += bonus; e.net += bonus; }
+  return e;
+};
+const DECISIONS = [
+  { t: '🏭 مستثمر عايز يبني مصنع على أطراف المدينة', a: { l: 'وافق (+900 💰، تلوث: السعادة -4)', m: 900, h: -4 }, b: { l: 'ارفض (السعادة +1)', m: 0, h: 1 } },
+  { t: '🎉 الناس عايزة مهرجان في الشارع', a: { l: 'نظّمه (-400 💰، السعادة +6)', m: -400, h: 6 }, b: { l: 'مفيش ميزانية', m: 0, h: -2 } },
+  { t: '🚧 مقاول بيعرض تجديد كل الشوارع', a: { l: 'وافق (-700 💰، دخل +15% لأسبوع)', m: -700, h: 0, boom: 0.15 }, b: { l: 'أجّل', m: 0, h: 0 } },
+  { t: '🕵️ مسؤول عايز رشوة عشان يمرّر مشروع', a: { l: 'ادفع (-500 💰، مشروع: +1400 💰)', m: 900, h: -2 }, b: { l: 'ارفض (السعادة +3)', m: 0, h: 3 } },
+  { t: '🌊 النيل فاض شوية والمخازن اتبلّت', a: { l: 'عوّض التجار (-350 💰، السعادة +3)', m: -350, h: 3 }, b: { l: 'سيبهم (السعادة -4)', m: 0, h: -4 } },
+  { t: '🎓 جامعة عايزة تفتح فرع عندنا', a: { l: 'ادعمها (-600 💰، دخل +20% لأسبوع)', m: -600, h: 2, boom: 0.2 }, b: { l: 'مش دلوقتي', m: 0, h: 0 } },
+  { t: '📺 قناة تلفزيون عايزة تصوّر المدينة', a: { l: 'اسمح (+500 💰)', m: 500, h: 0 }, b: { l: 'ارفض', m: 0, h: 1 } },
+  { t: '💡 انقطاع كهرباء كبير في حي سكني', a: { l: 'صلّح بسرعة (-450 💰)', m: -450, h: 2 }, b: { l: 'استنى (السعادة -6)', m: 0, h: -6 } },
+  { t: '🚌 شركة نقل عايزة خطوط ميكروباص جديدة', a: { l: 'وافق (-300 💰، دخل +10% لأسبوع)', m: -300, h: 1, boom: 0.1 }, b: { l: 'ارفض', m: 0, h: 0 } },
+  { t: '🏥 حملة تطعيم مجانية للأطفال', a: { l: 'موّلها (-350 💰، السعادة +5)', m: -350, h: 5 }, b: { l: 'مش ضرورية', m: 0, h: -1 } }
+];
+const decisionCard = (() => {
+  const css = document.createElement('style');
+  css.textContent = '#eventCard{position:fixed;left:50%;top:76px;transform:translateX(-50%);width:min(380px,92vw);padding:12px 14px;border-radius:16px;background:rgba(18,24,38,.95);color:#fff;font-family:Cairo,sans-serif;direction:rtl;z-index:30;display:none;border:1px solid #ffd766;box-shadow:0 8px 30px rgba(0,0,0,.5)}' +
+    '#eventCard .et{font-weight:700;font-size:15px;margin-bottom:8px}#eventCard button{display:block;width:100%;margin:5px 0;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-family:inherit;font-size:13px;cursor:pointer;text-align:right}' +
+    '#eventCard button:hover{background:rgba(255,215,102,.25)}#eventCard .ek{font-size:11px;color:#ffd766;margin-bottom:4px}';
+  document.head.appendChild(css);
+  const el = document.createElement('div'); el.id = 'eventCard'; document.body.appendChild(el);
+  el.addEventListener('click', e => { e.stopPropagation(); const k = e.target.getAttribute && e.target.getAttribute('data-ch'); if (k) decisionResolve(k); });
+  return { el, cur: null, t: 0 };
+})();
+function decisionShow(i) {
+  const d = DECISIONS[i === undefined ? Math.floor(Math.random() * DECISIONS.length) : i];
+  decisionCard.cur = d; decisionCard.t = 70;
+  decisionCard.el.innerHTML = '<div class="ek">قرار مطلوب منك يا محافظ</div><div class="et">' + d.t + '</div><button data-ch="a">' + d.a.l + '</button><button data-ch="b">' + d.b.l + '</button>';
+  decisionCard.el.style.display = 'block';
+}
+function decisionResolve(k) {
+  const d = decisionCard.cur; if (!d) return;
+  const c = k === 'a' ? d.a : k === 'b' ? d.b : { m: 0, h: -2 };
+  decisionCard.cur = null; decisionCard.el.style.display = 'none';
+  state.money += c.m; council.evMod = Math.max(-12, Math.min(12, (council.evMod || 0) + c.h));
+  if (c.boom) { council.evBoom = c.boom; council.evBoomDays = 7; }
+  council.evTaken++;
+  try { localStorage.setItem('livingCityDecisions', JSON.stringify({ taken: council.evTaken })); } catch (e) {}
+  document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+  toast('📜 ' + (k === 'a' ? 'اتنفذ' : k === 'b' ? 'اتأجّل/اترفض' : 'اتجاهل') + ': ' + (c.m ? (c.m > 0 ? '+' : '') + c.m + ' 💰 ' : '') + (c.h ? 'سعادة ' + (c.h > 0 ? '+' : '') + c.h : ''), 3200);
+  recalcStats(); councilRender();
+}
+function updateDecisions(dtReal) {
+  if (decisionCard.cur) {
+    decisionCard.t -= dtReal;
+    if (decisionCard.t <= 0) decisionResolve('x');
+  }
+  if (state.day !== council.evLast) {
+    const n = state.day - council.evLast; council.evLast = state.day;
+    if (n > 0 && n < 5) {
+      council.evMod *= 0.75; if (Math.abs(council.evMod) < 0.5) council.evMod = 0;
+      if (council.evBoom && --council.evBoomDays <= 0) council.evBoom = 0;
+      if (!decisionCard.cur && state.population > 20 && !drive.active && state.day % 2 === 0) decisionShow();
+    }
+  }
+}
+COUNCIL_QUESTS.push({ id: 'q11', t: 'خد 5 قرارات كمحافظ', r: 600, v: () => council.evTaken, g: 5 });
+window.__city = { decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
@@ -11447,6 +11515,7 @@ function animate() {
   updateEgrets(dtReal);
   updateDrive(dtReal);
   updateCouncil(dtReal);
+  updateDecisions(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
