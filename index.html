@@ -6957,6 +6957,95 @@ function updateHanTour(dtReal) {
 }
 initHanTour();
 
+// R86: baladi bread tricycle (تروسيكل العيش) doing its morning round, 5-8h
+let breadBike = null;
+function initBreadBike() {
+  if (breadBike) return;
+  const g = new THREE.Group();
+  // tricycle: blue frame cart with a wooden bread box
+  const frameM = new THREE.MeshLambertMaterial({ color: 0x2f6fed });
+  const cart = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.5), frameM);
+  cart.position.set(0, 0.65, -0.6);
+  const woodM = new THREE.MeshLambertMaterial({ color: 0x9a6b3f });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.7, 1.4), woodM);
+  box.position.set(0, 1.2, -0.6);
+  g.add(cart, box);
+  // stacked baladi bread: 3 shelves of tan discs
+  const breadM = new THREE.MeshLambertMaterial({ color: 0xd9b06a });
+  for (let sh = 0; sh < 3; sh++) {
+    for (let b = 0; b < 4; b++) {
+      const br = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.05, 10), breadM);
+      br.position.set(-0.33 + (b % 2) * 0.44, 0.95 + sh * 0.28, -0.95 + Math.floor(b / 2) * 0.6);
+      g.add(br);
+    }
+  }
+  // bike part: seat, handlebar, wheels
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.3), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+  seat.position.set(0, 1.0, 0.55);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: 0x888888 }));
+  bar.position.set(0, 1.05, 0.95);
+  g.add(seat, bar);
+  const wheelM = new THREE.MeshLambertMaterial({ color: 0x1c1c1c });
+  const wheels = [];
+  for (const [wx, wz, r] of [[-0.6, -1.1, 0.35], [0.6, -1.1, 0.35], [0, 1.05, 0.4]]) {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.09, 10), wheelM);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(wx, r, wz);
+    g.add(wh);
+    wheels.push(wh);
+  }
+  // vendor pedaling
+  const vend = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.55, 6), new THREE.MeshLambertMaterial({ color: 0x7a4a2f }));
+  vend.position.set(0, 1.35, 0.5);
+  const vHead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+  vHead.position.set(0, 1.75, 0.5);
+  const vCap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.15, 0.1, 8), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  vCap.position.set(0, 1.86, 0.5);
+  g.add(vend, vHead, vCap);
+  g.visible = false;
+  scene.add(g);
+  // morning loop around the fountain block: roads x=-39 & x=13, z=-39 & z=39
+  const path = [[-37, -37], [11, -37], [11, 37], [-37, 37]];
+  breadBike = { g, wheels, path, t: 0, toastedDay: -1 };
+}
+function updateBreadBike(dtReal) {
+  if (!breadBike) return;
+  const f = breadBike;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = h >= 5 && h < 8;
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("🫓 عربية العيش البلدي — عيش سخن الصبح!");
+  }
+  f.g.visible = on;
+  if (!on) return;
+  const speed = 4.2;
+  let per = 0;
+  for (let i = 0; i < f.path.length; i++) {
+    const [x1, z1] = f.path[(i + 1) % f.path.length], [x0, z0] = f.path[i];
+    per += Math.hypot(x1 - x0, z1 - z0);
+  }
+  const d = (f.t * speed) % per;
+  let acc = 0, px = 0, pz = 0, ang = 0;
+  for (let i = 0; i < f.path.length; i++) {
+    const [x1, z1] = f.path[(i + 1) % f.path.length], [x0, z0] = f.path[i];
+    const seg = Math.hypot(x1 - x0, z1 - z0);
+    if (d <= acc + seg) {
+      const k = (d - acc) / seg;
+      px = x0 + (x1 - x0) * k; pz = z0 + (z1 - z0) * k;
+      ang = Math.atan2(x1 - x0, z1 - z0) + Math.PI;
+      break;
+    }
+    acc += seg;
+  }
+  f.g.position.set(px, 0, pz);
+  f.g.rotation.y = ang;
+  for (const w of f.wheels) w.rotation.x += speed * dtReal / 0.4;
+}
+initBreadBike();
+
+
 
 
 
@@ -7214,6 +7303,7 @@ function animate() {
   updateWedding(dtReal);
   updateFishBoats(dtReal);
   updateHanTour(dtReal);
+  updateBreadBike(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
