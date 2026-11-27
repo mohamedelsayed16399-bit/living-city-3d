@@ -7109,6 +7109,104 @@ function updateSweeper(dtReal) {
 }
 initSweeper();
 
+// R88: ahwah corner (قهوة بلدي) on the west bank — tables, tea glow, string lights, 17-1h
+let ahwahCorner = null;
+function initAhwah() {
+  if (ahwahCorner) return;
+  const AX = -31, AZ = 13;
+  const grp = new THREE.Group();
+  // sandy pad
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.14, 6), new THREE.MeshLambertMaterial({ color: 0xd9c69c }));
+  pad.position.set(AX, 0.07, AZ);
+  grp.add(pad);
+  const woodM = new THREE.MeshLambertMaterial({ color: 0x7a5230 });
+  const glowParts = [];
+  const tables = [[-2.2, -1.4], [0.4, 0.6], [2.4, -1.2]];
+  for (const [tx, tz] of tables) {
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.07, 10), woodM);
+    top.position.set(AX + tx, 0.62, AZ + tz);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 6), woodM);
+    leg.position.set(AX + tx, 0.3, AZ + tz);
+    grp.add(top, leg);
+    // glowing tea glasses on each table
+    for (let tg = 0; tg < 2; tg++) {
+      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.05, 0.16, 6), new THREE.MeshBasicMaterial({ color: 0xd4691e }));
+      glass.position.set(AX + tx - 0.2 + tg * 0.4, 0.74, AZ + tz + 0.12);
+      glass.visible = false;
+      grp.add(glass);
+      glowParts.push(glass);
+    }
+    // two chairs
+    for (const csgn of [-1, 1]) {
+      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.45, 0.4), new THREE.MeshLambertMaterial({ color: 0x8a6a4a }));
+      ch.position.set(AX + tx + csgn * 0.85, 0.24, AZ + tz);
+      grp.add(ch);
+    }
+  }
+  // seated figures (visible in ahwah hours)
+  const sitters = [];
+  const sitCols = [0x445a8a, 0x7a4a2f, 0x4a7a4f, 0x8a4fd0, 0x9a5a2f, 0x2fa8a0];
+  let si = 0;
+  for (const [tx, tz] of tables) {
+    for (const csgn of [-1, 1]) {
+      const fig = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.5, 6), new THREE.MeshLambertMaterial({ color: sitCols[si % 6] }));
+      body.position.y = 0.55;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+      head.position.y = 0.92;
+      fig.add(body, head);
+      fig.position.set(AX + tx + csgn * 0.85, 0.2, AZ + tz);
+      fig.rotation.y = csgn > 0 ? -Math.PI / 2 : Math.PI / 2;
+      fig.visible = false;
+      grp.add(fig);
+      sitters.push(fig);
+      si++;
+    }
+  }
+  // string lights between two poles over the pad
+  const poleM = new THREE.MeshLambertMaterial({ color: 0x4a4038 });
+  for (const pz of [-2.8, 2.8]) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.0, 6), poleM);
+    p.position.set(AX - 3.4, 1.5, AZ + pz);
+    grp.add(p);
+  }
+  const bulbs = [];
+  for (let i = 0; i <= 10; i++) {
+    const k = i / 10;
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xffd27a : 0xff9a5a }));
+    bulb.position.set(AX - 3.4, 2.9 - Math.sin(k * Math.PI) * 0.35, AZ - 2.8 + k * 5.6);
+    bulb.visible = false;
+    grp.add(bulb);
+    bulbs.push(bulb);
+  }
+  // shisha on the middle table
+  const shBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.25, 8), new THREE.MeshLambertMaterial({ color: 0x2f6f6a }));
+  shBase.position.set(AX + 0.4, 0.78, AZ + 0.45);
+  const shStem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6), new THREE.MeshLambertMaterial({ color: 0xc0c4cc }));
+  shStem.position.set(AX + 0.4, 1.05, AZ + 0.45);
+  grp.add(shBase, shStem);
+  scene.add(grp);
+  ahwahCorner = { grp, glowParts, sitters, bulbs, t: 0, toastedDay: -1 };
+}
+function updateAhwah(dtReal) {
+  if (!ahwahCorner) return;
+  const f = ahwahCorner;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = h >= 17 || h < 1;
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("☕ القهوة البلدي نورت — شاي بالنعناع ودومينو!");
+  }
+  for (const g of f.glowParts) g.visible = on;
+  for (const s of f.sitters) s.visible = on;
+  for (let i = 0; i < f.bulbs.length; i++) {
+    f.bulbs[i].visible = on && (Math.sin(f.t * 2 + i * 1.3) > -0.7);
+  }
+}
+initAhwah();
+
+
 
 
 
@@ -7370,6 +7468,7 @@ function animate() {
   updateHanTour(dtReal);
   updateBreadBike(dtReal);
   updateSweeper(dtReal);
+  updateAhwah(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
