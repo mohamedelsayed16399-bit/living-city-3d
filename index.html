@@ -8414,6 +8414,96 @@ function updateMeteors(dtReal) {
   }
 }
 
+// R101: desert safari — jeeps circling the pyramids with dust trails
+let safari = null;
+function initSafari() {
+  if (safari) return;
+  const grp = new THREE.Group();
+  const jeeps = [];
+  const colors = [0xd84f3a, 0x3a78c2, 0xe8b93a];
+  const wheelG = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
+  const wheelM = new THREE.MeshLambertMaterial({ color: 0x222222 });
+  for (let i = 0; i < 3; i++) {
+    const j = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 1.3), new THREE.MeshLambertMaterial({ color: colors[i] }));
+    body.position.y = 0.75;
+    j.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.55, 1.2), new THREE.MeshLambertMaterial({ color: 0xf0ece0 }));
+    cab.position.set(-0.2, 1.35, 0);
+    j.add(cab);
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 1.1), new THREE.MeshLambertMaterial({ color: 0x9ec8e0 }));
+    shield.position.set(0.5, 1.35, 0);
+    j.add(shield);
+    const wheels = [];
+    for (const w of [[0.8, 0.62], [0.8, -0.62], [-0.8, 0.62], [-0.8, -0.62]]) {
+      const wh = new THREE.Mesh(wheelG, wheelM);
+      wh.rotation.x = Math.PI / 2;
+      wh.position.set(w[0], 0.34, w[1]);
+      j.add(wh);
+      wheels.push(wh);
+    }
+    for (let ti = 0; ti < 2; ti++) {
+      const t = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.5, 0.32), new THREE.MeshLambertMaterial({ color: ti ? 0x4a6a9a : 0xe8e0d0 }));
+      t.position.set(-0.2 + ti * 0.5, 1.5, ti ? 0.3 : -0.3);
+      j.add(t);
+    }
+    grp.add(j);
+    jeeps.push({ g: j, wheels, off: i * (Math.PI * 2 / 3) });
+  }
+  const puffs = [];
+  const puffG = new THREE.SphereGeometry(0.5, 6, 5);
+  for (let i = 0; i < 18; i++) {
+    const pm = new THREE.MeshBasicMaterial({ color: 0xd9c795, transparent: true, opacity: 0, depthWrite: false });
+    const p = new THREE.Mesh(puffG, pm);
+    grp.add(p);
+    puffs.push({ m: p, t: 1, dur: 1 });
+  }
+  scene.add(grp);
+  safari = { grp, jeeps, puffs, t: 0, puffT: 0, cx: -175, cz: -10, rx: 50, rz: 55, toastedDay: -1 };
+}
+initSafari();
+
+function updateSafari(dtReal) {
+  if (!safari) return;
+  const f = safari;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F699} سفاري الصحراء — عربيات بتلف حوالين الأهرامات!');
+  }
+  const spd = 0.22;
+  f.puffT -= dtReal;
+  const spawnPuff = f.puffT <= 0;
+  if (spawnPuff) f.puffT = 0.18;
+  for (let i = 0; i < f.jeeps.length; i++) {
+    const jp = f.jeeps[i];
+    const a = f.t * spd + jp.off;
+    const x = f.cx + Math.cos(a) * f.rx;
+    const z = f.cz + Math.sin(a) * f.rz;
+    const dx = -Math.sin(a) * f.rx, dz = Math.cos(a) * f.rz;
+    jp.g.position.set(x, Math.abs(Math.sin(f.t * 6 + i * 2)) * 0.06, z);
+    jp.g.rotation.y = Math.atan2(dx, dz);
+    for (const w of jp.wheels) w.rotation.y += dtReal * 8;
+    if (spawnPuff) {
+      const p = f.puffs.find(q => q.t >= q.dur);
+      if (p) {
+        p.t = 0; p.dur = 0.9 + Math.random() * 0.5;
+        p.m.position.set(x - dx * 0.02, 0.35, z - dz * 0.02);
+        p.m.scale.setScalar(0.5);
+        p.m.material.opacity = 0.4;
+      }
+    }
+  }
+  for (const p of f.puffs) {
+    if (p.t >= p.dur) { p.m.material.opacity = 0; continue; }
+    p.t += dtReal;
+    const k = p.t / p.dur;
+    p.m.scale.setScalar(0.5 + k * 1.6);
+    p.m.material.opacity = 0.4 * (1 - k);
+    p.m.position.y = 0.35 + k * 0.5;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -8515,6 +8605,7 @@ function animate() {
   updateDawnFish(dtReal);
   updateHouseboats(dtReal);
   updateMeteors(dtReal);
+  updateSafari(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
