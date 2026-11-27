@@ -2497,6 +2497,19 @@ const stars = (() => {
   return pts;
 })();
 
+
+// R130: partial solar eclipse every 4th day around 12:30-14:00 (moon disc covers the sun, light dims)
+const eclipseState = { toastedDay: -1, force: -1 };
+function eclipseK() {
+  const active = (state.day % 4 === 2 || eclipseState.force === 1) && state.hour >= 12.5 && state.hour < 14 && state.weather !== 'rain';
+  if (!active) return 1;
+  const u = (state.hour - 12.5) / 1.5;
+  return 1 - 0.8 * Math.sin(u * Math.PI);
+}
+const eclipseDisc = makeSkyDisc('rgba(6,6,12,1)', 31);
+eclipseDisc.material.opacity = 0;
+eclipseDisc.renderOrder = 5;
+
 function updateLighting() {
   const s = skyFor(state.hour);
   const dim = state.weather === 'rain' ? 0.55 : state.weather === 'cloudy' ? 0.78 : state.weather === 'dusty' ? 0.72 : 1;
@@ -2509,9 +2522,10 @@ function updateLighting() {
   skyDome.material.uniforms.bottom.value.copy(fogC).multiplyScalar(1.06);
   skyDome.position.set(camera.position.x, 0, camera.position.z);
   scene.fog.color.copy(fogC);
-  hemi.intensity = s.hemi * dim;
+  const eclK = eclipseK();
+  hemi.intensity = s.hemi * dim * (0.35 + 0.65 * eclK);
   const isNight = s.sun < 0.06;
-  sun.intensity = s.sun * dim;
+  sun.intensity = s.sun * dim * eclK;
   if (!isNight) {
     const t = (state.hour - 6) / 13; // 6h..19h
     const ang = Math.PI * Math.max(0.03, Math.min(0.97, t));
@@ -2526,6 +2540,10 @@ function updateLighting() {
     const dayAng = Math.PI * dayT;
     sunDisc.position.set(cx + Math.cos(dayAng) * 330, Math.sin(dayAng) * 250 + 15, cz - 120);
     sunDisc.material.opacity = isNight ? 0 : dim;
+    eclipseDisc.position.copy(sunDisc.position);
+    eclipseDisc.position.x += (eclK - 0.2) * 22;
+    eclipseDisc.material.opacity = eclK < 1 ? 0.98 : 0;
+    if (eclK < 1 && eclipseState.toastedDay !== state.day) { eclipseState.toastedDay = state.day; toast('\u{1F311} كسوف جزئي للشمس — الدنيا هتضلم شوية'); }
     const nightT = ((state.hour + 24 - 19) % 24) / 11; // 19h..6h
     const nAng = Math.PI * Math.max(0, Math.min(1, nightT));
     moonDisc.position.set(cx + Math.cos(nAng) * 330, Math.sin(nAng) * 230 + 20, cz - 120);
