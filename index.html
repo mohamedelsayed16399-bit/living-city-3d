@@ -10057,6 +10057,116 @@ function updateWaterLanterns(dtReal) {
   f.light.intensity = 1.1 + Math.sin(f.t * 4) * 0.2;
 }
 
+
+// R120: open-top double-decker tour bus looping the corniche, 12-18h
+let tourBus = null;
+function initTourBus() {
+  if (tourBus) return;
+  const grp = new THREE.Group();
+  const bus = new THREE.Group();
+  const redM = new THREE.MeshLambertMaterial({ color: 0xd93a3a });
+  const redD = new THREE.MeshLambertMaterial({ color: 0xb02828 });
+  // lower deck
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.3, 6.4), redM);
+  lower.position.y = 1.05;
+  bus.add(lower);
+  // windshield + side windows lower
+  const glassM = new THREE.MeshLambertMaterial({ color: 0xbfe3f0 });
+  const shield = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.8), glassM);
+  shield.position.set(0, 1.25, 3.21);
+  bus.add(shield);
+  for (const dx of [-1.11, 1.11]) {
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 0.55), glassM);
+    strip.position.set(dx, 1.3, 0);
+    strip.rotation.y = dx > 0 ? Math.PI / 2 : -Math.PI / 2;
+    bus.add(strip);
+  }
+  // upper open deck: floor + railing
+  const ufloor = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.15, 6.4), redD);
+  ufloor.position.y = 1.8;
+  bus.add(ufloor);
+  for (const dx of [-1.05, 1.05]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.5, 6.4), redM);
+    rail.position.set(dx, 2.1, 0);
+    bus.add(rail);
+  }
+  const railF = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.07), redM);
+  railF.position.set(0, 2.1, 3.2);
+  bus.add(railF);
+  // front upper windshield
+  const uw = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.6), glassM);
+  uw.position.set(0, 2.15, 3.16);
+  bus.add(uw);
+  // tourists on the open deck
+  const tCols = [0x3a78c2, 0xe8b93a, 0x3aa860, 0xe85a90, 0xeadfc8, 0x8e5ac0];
+  const tourists = [];
+  for (let i = 0; i < 6; i++) {
+    const t = new THREE.Group();
+    const tb = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.5, 0.3), new THREE.MeshLambertMaterial({ color: tCols[i] }));
+    tb.position.y = 0.35;
+    const th = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc8956c }));
+    th.position.y = 0.75;
+    t.add(tb, th);
+    t.position.set(-0.55 + (i % 2) * 1.1, 1.9, -2.4 + Math.floor(i / 2) * 2.0);
+    bus.add(t);
+    tourists.push(t);
+  }
+  // wheels
+  const wheelM = new THREE.MeshLambertMaterial({ color: 0x222228 });
+  for (const dz of [-2.2, 2.2]) for (const dx of [-1.0, 1.0]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 10), wheelM);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(dx, 0.42, dz);
+    bus.add(w);
+  }
+  // camera flash sprite on a random tourist
+  const flash = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
+  flash.position.set(0.55, 3.0, 0);
+  bus.add(flash);
+  grp.add(bus);
+  grp.visible = false;
+  scene.add(grp);
+  tourBus = { grp, bus, tourists, flash, t: 0, flashT: 0, toastedDay: -1 };
+}
+initTourBus();
+
+function updateTourBus(dtReal) {
+  if (!tourBus) return;
+  const f = tourBus;
+  const on = state.hour >= 12 && state.hour < 18;
+  f.grp.visible = on;
+  if (!on) return;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F68C} أتوبيس السياحة المكشوف بدأ جولته على الكورنيش!');
+  }
+  f.t += dtReal;
+  // route: corniche straight z -85 -> 85 at x=-3.2, brief photo stops at z=-8 and z=42
+  const LEG = 36, STOP = 4, CYCLE = (LEG + STOP) * 2;
+  let ct = f.t % CYCLE;
+  let z, dir;
+  if (ct < LEG) { z = -85 + (ct / LEG) * 170; dir = 1; }
+  else if (ct < LEG + STOP) { z = 85; dir = 1; }
+  else if (ct < LEG * 2 + STOP) { z = 85 - ((ct - LEG - STOP) / LEG) * 170; dir = -1; }
+  else { z = -85; dir = -1; }
+  f.bus.position.set(-3.2, 0, z);
+  f.bus.rotation.y = dir > 0 ? 0 : Math.PI;
+  // tourists look around / bounce slightly
+  for (let i = 0; i < f.tourists.length; i++) {
+    f.tourists[i].rotation.y = Math.sin(f.t * 0.8 + i * 1.7) * 0.7;
+    f.tourists[i].position.y = 1.9 + Math.abs(Math.sin(f.t * 3 + i)) * 0.03;
+  }
+  // camera flash every ~2.5s
+  f.flashT += dtReal;
+  if (f.flashT > 2.5) {
+    f.flashT = 0;
+    const ti = Math.floor(Math.random() * 6);
+    f.flash.position.set(f.tourists[ti].position.x, 3.0, f.tourists[ti].position.z);
+    f.flash.material.opacity = 0.9;
+  }
+  f.flash.material.opacity = Math.max(0, f.flash.material.opacity - dtReal * 4);
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10177,6 +10287,7 @@ function animate() {
   updateNubia(dtReal);
   updateCaravan(dtReal);
   updateWaterLanterns(dtReal);
+  updateTourBus(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
