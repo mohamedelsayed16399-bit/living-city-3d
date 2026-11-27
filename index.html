@@ -6856,6 +6856,108 @@ function updateFishBoats(dtReal) {
 }
 initFishBoats();
 
+// R85: hantour horse carriage (عربية هانطور) clip-clopping along the corniche, 9-13h and 16-22h
+let hanTour = null;
+function initHanTour() {
+  if (hanTour) return;
+  const g = new THREE.Group();
+  const brown = new THREE.MeshLambertMaterial({ color: 0x6e4a2f });
+  const darkBrown = new THREE.MeshLambertMaterial({ color: 0x4a3220 });
+  // horse: body, neck, head, mane, tail, 4 legs
+  const hBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 1.3), brown);
+  hBody.position.set(0, 1.05, -1.6);
+  const hNeck = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.7, 0.3), brown);
+  hNeck.position.set(0, 1.5, -2.15); hNeck.rotation.x = 0.5;
+  const hHead = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.55), brown);
+  hHead.position.set(0, 1.78, -2.45);
+  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.18), darkBrown);
+  mane.position.set(0, 1.62, -2.05); mane.rotation.x = 0.5;
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.55, 0.1), darkBrown);
+  tail.position.set(0, 1.15, -0.9); tail.rotation.x = -0.4;
+  g.add(hBody, hNeck, hHead, mane, tail);
+  const legG = new THREE.CylinderGeometry(0.07, 0.06, 0.85, 6);
+  const legs = [];
+  for (const [lx, lz, ph] of [[-0.2, -2.05, 0], [0.2, -2.05, Math.PI], [-0.2, -1.2, Math.PI], [0.2, -1.2, 0]]) {
+    const leg = new THREE.Mesh(legG, darkBrown);
+    leg.geometry = legG;
+    leg.position.set(lx, 0.55, lz);
+    g.add(leg);
+    legs.push({ leg, ph });
+  }
+  // shafts connecting horse to cart
+  const shaftM = new THREE.MeshLambertMaterial({ color: 0x5a4632 });
+  for (const sx of [-0.35, 0.35]) {
+    const sh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.2), shaftM);
+    sh.position.set(sx, 0.95, -0.5);
+    g.add(sh);
+  }
+  // cart: bench, floor, two big wheels, canopy
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 1.7), shaftM);
+  floor.position.set(0, 0.75, 0.6);
+  const bench = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.35, 0.5), new THREE.MeshLambertMaterial({ color: 0x8a2f3f }));
+  bench.position.set(0, 1.0, 1.0);
+  const seat2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 0.4), new THREE.MeshLambertMaterial({ color: 0x2f6f6a }));
+  seat2.position.set(0, 0.95, 0.3);
+  const wheelM2 = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+  const wheels = [];
+  for (const wx of [-0.72, 0.72]) {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 12), wheelM2);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(wx, 0.55, 0.6);
+    g.add(wh);
+    wheels.push(wh);
+  }
+  // canopy on 4 thin posts
+  g.add(floor, bench, seat2);
+  const postG2 = new THREE.CylinderGeometry(0.03, 0.03, 0.9, 5);
+  for (const [px, pz] of [[-0.6, -0.1], [0.6, -0.1], [-0.6, 1.3], [0.6, 1.3]]) {
+    const p = new THREE.Mesh(postG2, shaftM);
+    p.position.set(px, 1.35, pz);
+    g.add(p);
+  }
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.08, 1.7), new THREE.MeshLambertMaterial({ color: 0xe8d9a0 }));
+  canopy.position.set(0, 1.85, 0.6);
+  g.add(canopy);
+  // driver
+  const driver = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0x445a8a }));
+  driver.position.set(0, 1.25, 0.25);
+  const dHead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+  dHead.position.set(0, 1.62, 0.25);
+  const turban = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), new THREE.MeshLambertMaterial({ color: 0xf2ede0 }));
+  turban.position.set(0, 1.7, 0.25); turban.scale.y = 0.6;
+  g.add(driver, dHead, turban);
+  g.visible = false;
+  scene.add(g);
+  hanTour = { g, legs, wheels, tail, t: 0, toastedDay: -1 };
+}
+function updateHanTour(dtReal) {
+  if (!hanTour) return;
+  const f = hanTour;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = (h >= 9 && h < 13) || (h >= 16 && h < 22);
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("🐴 عربية الهانطور على الكورنيش — لفة رايقة!");
+  }
+  f.g.visible = on;
+  if (!on) return;
+  // slow cruise up and down the corniche road east lane
+  const range = 78, speed = 2.6;
+  const cyc = (f.t * speed) % (range * 2);
+  const z = cyc < range ? -range / 2 + cyc + 20 : range / 2 - (cyc - range) + 20;
+  const dir = cyc < range ? 1 : -1;
+  f.g.position.set(10.5, 0, z);
+  f.g.rotation.y = dir > 0 ? 0 : Math.PI;
+  // trot: diagonal leg pairs, wheel spin, tail swish, gentle bob
+  for (const L of f.legs) L.leg.rotation.x = Math.sin(f.t * 9 + L.ph) * 0.45;
+  for (const w of f.wheels) w.rotation.x += speed * dtReal / 0.55;
+  f.tail.rotation.z = Math.sin(f.t * 3.2) * 0.3;
+  f.g.position.y = Math.abs(Math.sin(f.t * 4.5)) * 0.05;
+}
+initHanTour();
+
+
 
 
 
@@ -7111,6 +7213,7 @@ function animate() {
   updateSufiShow(dtReal);
   updateWedding(dtReal);
   updateFishBoats(dtReal);
+  updateHanTour(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
