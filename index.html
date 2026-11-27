@@ -6115,6 +6115,83 @@ function updateBalloons(dtReal) {
 }
 initBalloons();
 
+// R76: felucca race (سباق الفلوكة) on the river 16-19h — 3 racing feluccas rounding buoys, heeling into turns
+let feluccaRace = null;
+function initFeluccaRace() {
+  if (feluccaRace) return;
+  const sailCols = [0xe84545, 0xf2c020, 0x2f9de8];
+  // course buoys north/south in the river channel
+  const buoys = [];
+  for (const bz of [-70, 70]) {
+    const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshLambertMaterial({ color: 0xff5a1e, emissive: 0x421400 }));
+    buoy.position.set(-13, 0.35, bz);
+    scene.add(buoy);
+    buoys.push(buoy);
+  }
+  const racers = [];
+  for (let i = 0; i < 3; i++) {
+    const boat = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 3.4), new THREE.MeshLambertMaterial({ color: 0xf0e6d0 }));
+    hull.position.y = 0.35;
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.15, 2.9), new THREE.MeshLambertMaterial({ color: 0x8a6b42 }));
+    deck.position.y = 0.62;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.6, 6), new THREE.MeshLambertMaterial({ color: 0x6b4f2a }));
+    mast.position.y = 2.8;
+    boat.add(hull, deck, mast);
+    // lateen triangular sail
+    const sailGeo = new THREE.BufferGeometry();
+    const v = new Float32Array([0, 0.7, 0.2, 0, 5.0, 0.2, 0, 1.6, -3.2]);
+    sailGeo.setAttribute('position', new THREE.BufferAttribute(v, 3));
+    sailGeo.computeVertexNormals();
+    const sail = new THREE.Mesh(sailGeo, new THREE.MeshLambertMaterial({ color: sailCols[i], side: THREE.DoubleSide }));
+    boat.add(sail);
+    // skipper
+    const skip = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+    skip.position.set(0, 0.95, -1.2);
+    boat.add(skip);
+    boat.visible = false;
+    scene.add(boat);
+    racers.push({ boat, sail, lap: i * 0.33, heel: 0 });
+  }
+  feluccaRace = { racers, buoys, t: 0, toastedDay: -1 };
+}
+function updateFeluccaRace(dtReal) {
+  if (!feluccaRace) return;
+  const r = feluccaRace;
+  r.t += dtReal;
+  const h = state.hour;
+  const racing = h >= 16 && h < 19;
+  for (const b of r.buoys) b.visible = racing;
+  if (racing && r.toastedDay !== state.day) {
+    r.toastedDay = state.day;
+    toast('⛵ سباق الفلوكة بدأ على النيل — مين هيلحق على البوية الشمالية؟');
+  }
+  for (const rc of r.racers) {
+    rc.boat.visible = racing;
+    if (!racing) continue;
+    // parametric course: ping-pong along river channel with lane offset per boat
+    rc.lap = (rc.lap + dtReal * 0.018) % 2;
+    const ph = rc.lap < 1 ? rc.lap : 2 - rc.lap;      // 0..1..0
+    const dirZ = rc.lap < 1 ? 1 : -1;                  // north or south leg
+    const lane = Math.sin(rc.lap * Math.PI * 2 + rc.boat.id) ;
+    const z = -70 + ph * 140;
+    const x = -13 + Math.sin(ph * Math.PI) * 3.5 * (dirZ > 0 ? 1 : -1) * 0.9;
+    rc.boat.position.set(x, 0.1, z);
+    // heading along course
+    const dx = Math.cos(ph * Math.PI) * Math.PI * 3.5 * 0.9 * (dirZ > 0 ? 1 : -1) * (1 / 140);
+    rc.boat.rotation.y = Math.atan2(dx, dirZ) ;
+    // heel into the turn near buoys
+    const nearBuoy = Math.min(Math.abs(z - 70), Math.abs(z + 70));
+    const targetHeel = nearBuoy < 14 ? 0.35 * (dirZ > 0 ? 1 : -1) : 0.12 * Math.sin(r.t * 0.8 + rc.lap * 7);
+    rc.heel += (targetHeel - rc.heel) * Math.min(1, dtReal * 3);
+    rc.boat.rotation.z = rc.heel;
+    // sail flutter
+    rc.sail.rotation.y = Math.sin(r.t * 1.4 + rc.lap * 9) * 0.06;
+  }
+}
+initFeluccaRace();
+
+
 
 
 
@@ -6352,6 +6429,7 @@ function animate() {
   updateGarbageTruck(dtReal);
   updateKiteFest(dtReal);
   updateBalloons(dtReal);
+  updateFeluccaRace(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
