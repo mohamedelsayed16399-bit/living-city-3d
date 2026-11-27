@@ -6496,6 +6496,102 @@ function updatePigeonTowers(dtReal) {
 }
 initPigeonTowers();
 
+// R80: jet skis + banana boat (مراكب الميه) on the river 11-16h — fast fun before the felucca race takes over
+let riverFun = null;
+function initRiverFun() {
+  if (riverFun) return;
+  // two jet skis
+  const skis = [];
+  const skiCols = [0xe84545, 0xf2c020];
+  for (let i = 0; i < 2; i++) {
+    const ski = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 1.9), new THREE.MeshLambertMaterial({ color: skiCols[i] }));
+    hull.position.y = 0.3;
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.25, 0.9), new THREE.MeshLambertMaterial({ color: 0x222228 }));
+    seat.position.set(0, 0.55, -0.2);
+    const bars = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.1), new THREE.MeshLambertMaterial({ color: 0x444444 }));
+    bars.position.set(0, 0.75, 0.6);
+    const rider = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.6, 6), new THREE.MeshLambertMaterial({ color: 0x2f6fed }));
+    rider.position.set(0, 0.95, -0.15);
+    const rHead = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+    rHead.position.set(0, 1.4, -0.15);
+    ski.add(hull, seat, bars, rider, rHead);
+    ski.visible = false;
+    scene.add(ski);
+    skis.push({ ski, ph: i * 3.1, lane: i ? -15.5 : -10.5 });
+  }
+  // motorboat towing a banana with 3 riders
+  const boat = new THREE.Group();
+  const bHull = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 3.2), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  bHull.position.y = 0.4;
+  const bTrim = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.15, 3.25), new THREE.MeshLambertMaterial({ color: 0x2f9de8 }));
+  bTrim.position.y = 0.72;
+  const driver = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.6, 6), new THREE.MeshLambertMaterial({ color: 0xe88a2f }));
+  driver.position.set(0, 1.05, -0.8);
+  boat.add(bHull, bTrim, driver);
+  boat.visible = false;
+  scene.add(boat);
+  const banana = new THREE.Group();
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 3.4, 8), new THREE.MeshLambertMaterial({ color: 0xf2e020 }));
+  tube.rotation.x = Math.PI / 2;
+  tube.position.y = 0.45;
+  banana.add(tube);
+  const rCols = [0xe84545, 0x5ac85a, 0xb45ae8];
+  for (let i = 0; i < 3; i++) {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.5, 6), new THREE.MeshLambertMaterial({ color: rCols[i] }));
+    r.position.set(0, 0.95, -1.1 + i * 1.1);
+    banana.add(r);
+  }
+  banana.visible = false;
+  scene.add(banana);
+  // tow rope
+  const ropeGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const rope = new THREE.Line(ropeGeo, new THREE.LineBasicMaterial({ color: 0xcccccc }));
+  rope.visible = false;
+  scene.add(rope);
+  riverFun = { skis, boat, banana, rope, t: 0, toastedDay: -1 };
+}
+function updateRiverFun(dtReal) {
+  if (!riverFun) return;
+  const f = riverFun;
+  f.t += dtReal;
+  const h = state.hour;
+  const fun = h >= 11 && h < 16;
+  if (fun && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('🌊 جيت سكي ومركب موز على النيل — اللفة الحارة بدأت!');
+  }
+  for (const s of f.skis) {
+    s.ski.visible = fun;
+    if (!fun) continue;
+    // fast S-curves along the channel
+    const z = ((f.t * 9 + s.ph * 40) % 160) - 80;
+    const x = s.lane + Math.sin(f.t * 1.1 + s.ph) * 2.6;
+    s.ski.position.set(x, 0.1 + Math.abs(Math.sin(f.t * 3 + s.ph)) * 0.12, z);
+    s.ski.rotation.y = Math.atan2(Math.cos(f.t * 1.1 + s.ph) * 2.6 * 1.1, 9 * (z > 78 || z < -78 ? -1 : 1));
+    s.ski.rotation.z = Math.sin(f.t * 1.1 + s.ph) * 0.25;
+  }
+  // boat + banana: slower big loop
+  f.boat.visible = fun; f.banana.visible = fun; f.rope.visible = fun;
+  if (fun) {
+    const zB = Math.sin(f.t * 0.22) * 62;
+    const dir = Math.cos(f.t * 0.22) >= 0 ? 1 : -1;
+    f.boat.position.set(-13 + Math.sin(f.t * 0.5) * 2, 0.1, zB);
+    f.boat.rotation.y = dir > 0 ? 0 : Math.PI;
+    const bx = -13 + Math.sin(f.t * 0.5 - 0.35) * 2.6;
+    const bz = zB - dir * 4.6;
+    f.banana.position.set(bx, 0.1 + Math.abs(Math.sin(f.t * 2.2)) * 0.25, bz);
+    f.banana.rotation.y = f.boat.rotation.y + Math.sin(f.t * 0.9) * 0.3;
+    f.banana.rotation.z = Math.sin(f.t * 2.2) * 0.12;
+    const pts = f.rope.geometry.attributes.position.array;
+    pts[0] = f.boat.position.x; pts[1] = 0.6; pts[2] = f.boat.position.z - dir * 1.6;
+    pts[3] = bx; pts[4] = 0.6; pts[5] = bz + dir * 1.7;
+    f.rope.geometry.attributes.position.needsUpdate = true;
+  }
+}
+initRiverFun();
+
+
 
 
 
@@ -6741,6 +6837,7 @@ function animate() {
   updateMetroEntrance(dtReal);
   updateFoodCarts(dtReal);
   updatePigeonTowers(dtReal);
+  updateRiverFun(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
