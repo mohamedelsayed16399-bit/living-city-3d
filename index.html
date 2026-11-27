@@ -10364,6 +10364,81 @@ function updateJetSkis(dtReal) {
   }
 }
 
+
+// R124: iftar cannon on Qaitbay fort, fires at maghrib (18:00)
+const iftarCannon = (() => {
+  const grp = new THREE.Group();
+  const CX = -24, CY = 1.4, CZ = 123.5; // NE corner of fort platform, aiming east to the river
+  const woodM = new THREE.MeshLambertMaterial({ color: 0x6b4a2a });
+  const ironM = new THREE.MeshLambertMaterial({ color: 0x3a3f44 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 0.9), woodM);
+  base.position.y = 0.35;
+  const wG = new THREE.CylinderGeometry(0.34, 0.34, 0.12, 12);
+  const w1 = new THREE.Mesh(wG, woodM); w1.rotation.x = Math.PI / 2; w1.position.set(-0.2, 0.34, 0.52);
+  const w2 = new THREE.Mesh(wG, woodM); w2.rotation.x = Math.PI / 2; w2.position.set(-0.2, 0.34, -0.52);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 1.9, 10), ironM);
+  barrel.rotation.z = -Math.PI / 2 + 0.18; // elevated, muzzle toward +x
+  barrel.position.set(0.35, 0.72, 0);
+  grp.add(base, w1, w2, barrel);
+  grp.position.set(CX, CY, CZ);
+  scene.add(grp);
+  // muzzle flash + smoke
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffc34d, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(flash);
+  const smoke = [];
+  for (let i = 0; i < 14; i++) {
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshBasicMaterial({ color: 0xd8d4cc, transparent: true, opacity: 0, depthWrite: false }));
+    p.visible = false;
+    scene.add(p);
+    smoke.push({ m: p, life: -1, vx: 0, vy: 0, vz: 0 });
+  }
+  const muzzle = new THREE.Vector3(CX + 1.35, CY + 0.95, CZ);
+  return { grp, barrel, flash, smoke, muzzle, flashLife: -1, firedDay: -1, recoil: 0 };
+})();
+function updateIftarCannon(dtReal) {
+  const c = iftarCannon;
+  // fire once per day at maghrib
+  if (state.hour >= 18 && state.hour < 18.2 && c.firedDay !== state.day) {
+    c.firedDay = state.day;
+    c.flashLife = 0.3;
+    c.recoil = 1;
+    for (const p of c.smoke) {
+      p.life = 1.1 + Math.random() * 0.5;
+      p.m.position.copy(c.muzzle);
+      p.vx = 2.2 + Math.random() * 2.2;
+      p.vy = 0.8 + Math.random() * 1.6;
+      p.vz = (Math.random() - 0.5) * 1.6;
+      p.m.visible = true;
+    }
+    toast('\u{1F4A3} مدفع الإفطار ضرب من القلعة — مغرب كريم!');
+  }
+  if (c.flashLife >= 0) {
+    c.flashLife -= dtReal;
+    const k = Math.max(0, c.flashLife / 0.3);
+    c.flash.position.copy(c.muzzle);
+    c.flash.scale.setScalar(0.6 + (1 - k) * 1.8);
+    c.flash.material.opacity = k * 0.9;
+    if (c.flashLife < 0) c.flash.material.opacity = 0;
+  }
+  if (c.recoil > 0) {
+    c.recoil = Math.max(0, c.recoil - dtReal * 2.5);
+    c.barrel.position.x = 0.35 - Math.sin(c.recoil * Math.PI) * 0.35;
+  }
+  for (const p of c.smoke) {
+    if (p.life >= 0) {
+      p.life -= dtReal;
+      p.m.position.x += p.vx * dtReal;
+      p.m.position.y += p.vy * dtReal;
+      p.m.position.z += p.vz * dtReal;
+      p.vx *= 0.97; p.vy = p.vy * 0.97 + dtReal * 0.7;
+      const age = 1.6 - p.life;
+      p.m.scale.setScalar(1 + age * 1.8);
+      p.m.material.opacity = Math.max(0, Math.min(0.7, p.life * 0.8));
+      if (p.life < 0) p.m.visible = false;
+    }
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10488,6 +10563,7 @@ function animate() {
   updateMurmuration(dtReal);
   updateMinaretGlow(dtReal);
   updateJetSkis(dtReal);
+  updateIftarCannon(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
