@@ -10997,7 +10997,7 @@ const drive = (() => {
     b.addEventListener('pointercancel', offf); b.addEventListener('pointerleave', offf);
     pad.appendChild(b);
   }
-  mkBtn('◀', 'left', 12, 'left'); mkBtn('▶', 'left', 92, 'right');
+  mkBtn('◀', 'left', 66, 'left'); mkBtn('▶', 'left', 146, 'right');
   mkBtn('⛽', 'right', 12, 'up'); mkBtn('🛑', 'right', 92, 'down');
   document.body.appendChild(pad);
   const btn = document.createElement('button');
@@ -11276,8 +11276,11 @@ function councilRender() {
     const d = !!council.done[q.id], v = Math.min(q.g, q.v());
     h += '<div class="cq' + (d ? ' d' : '') + '"><span>' + (d ? '✅ ' : '⬜ ') + q.t + '</span><span>' + (d ? 'تم' : v + '/' + q.g + ' · +' + q.r) + '</span></div>';
   }
-  p.innerHTML = h;
+  if (p._hold) return;
+  h = councilDecorate(h);
+  if (p._last !== h) { p._last = h; p.innerHTML = h; }
 }
+function councilDecorate(h) { return h; }
 (function councilUI() {
   const css = document.createElement('style');
   css.textContent = '#councilPanel{position:fixed;right:62px;top:62px;width:290px;max-height:calc(100vh - 150px);overflow:auto;padding:10px 12px;border-radius:14px;background:rgba(18,24,38,.93);color:#fff;font-family:Cairo,sans-serif;font-size:13px;line-height:1.6;border:1px solid rgba(255,255,255,.18);z-index:25;display:none;direction:rtl}' +
@@ -11298,9 +11301,13 @@ function councilRender() {
     councilRender();
   }
   b.addEventListener('click', e => { e.stopPropagation(); toggle(); });
+  p.addEventListener('pointerdown', () => { p._hold = true; });
+  const rel = () => { setTimeout(() => { p._hold = false; }, 60); };
+  addEventListener('pointerup', rel); addEventListener('pointercancel', rel);
   p.addEventListener('click', e => {
     e.stopPropagation();
     if (e.target.id === 'councilX') { toggle(false); return; }
+    if (e.target.id === 'econBtn') { econBuyStimulus(); return; }
     const c = e.target.getAttribute && e.target.getAttribute('data-c'); if (!c) return;
     const k = c.slice(0, -1), d = c.slice(-1) === '+' ? 1 : -1;
     if (k === 'tax') council.tax = Math.max(0, Math.min(30, council.tax + d * 2));
@@ -11558,7 +11565,44 @@ function updateWalk(dtReal) {
   walk.panel.innerHTML = html;
 }
 COUNCIL_QUESTS.push({ id: 'q12', t: 'اجمع 20 جنيه دهب في وضع المشي 🚶', r: 500, v: () => walk.stats.collected, g: 20 });
-window.__city = { walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R137: ECONOMIC CYCLE - boom / normal / recession phases that scale all income, with a stimulus package you can buy
+const econCycle = { phase: 'normal', days: 6, lastDay: 1, stimulus: 0 };
+const ECON = { boom: { k: 1.25, l: '📈 انتعاش', c: '#7CFC9a' }, normal: { k: 1, l: '➖ مستقر', c: '#cfd8e8' }, recession: { k: 0.7, l: '📉 ركود', c: '#ff8a80' } };
+const _est2 = councilEstimate;
+councilEstimate = function () {
+  const e = _est2();
+  const k = ECON[econCycle.phase].k;
+  if (k !== 1) { const adj = Math.round((e.base + e.taxAdj) * (k - 1)); e.taxAdj += adj; e.net += adj; }
+  return e;
+};
+function econBuyStimulus() {
+  if (econCycle.phase !== 'recession') { toast('مفيش ركود دلوقتي'); return; }
+  if (state.money < 800) { toast('محتاج 800 💰 لحزمة التحفيز'); return; }
+  state.money -= 800; econCycle.days = Math.max(1, econCycle.days - 3); econCycle.stimulus++;
+  document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+  toast('💉 حزمة تحفيز: الركود هيقصر 3 أيام'); councilRender();
+}
+function updateEcon(dtReal) {
+  if (state.day === econCycle.lastDay) return;
+  const n = state.day - econCycle.lastDay; econCycle.lastDay = state.day;
+  if (n < 1 || n > 4) return;
+  econCycle.days -= n;
+  if (econCycle.days > 0) return;
+  const r = Math.random(), prev = econCycle.phase;
+  econCycle.phase = prev === 'normal' ? (r < 0.5 ? 'boom' : 'recession') : 'normal';
+  econCycle.days = econCycle.phase === 'normal' ? 4 + Math.floor(Math.random() * 3) : 4 + Math.floor(Math.random() * 3);
+  toast(econCycle.phase === 'boom' ? '📈 انتعاش اقتصادي! الدخل +25% لأيام' : econCycle.phase === 'recession' ? '📉 ركود اقتصادي! الدخل -30%... حاول تقلل الإنفاق أو اشتري حزمة تحفيز' : '➖ الاقتصاد استقر', 4000);
+  councilRender();
+}
+councilDecorate = function (h) {
+  const E = ECON[econCycle.phase];
+  const row = '<div class="cs">الاقتصاد: <b style="color:' + E.c + '">' + E.l + '</b> · باقي ' + Math.max(0, econCycle.days) + ' يوم' + (econCycle.phase === 'recession' ? ' <button id="econBtn" style="width:auto;padding:0 8px;font-size:12px">💉 تحفيز 800</button>' : '') + '</div>';
+  const k = h.indexOf('<div class="cs">');
+  return k < 0 ? h + row : h.slice(0, k) + row + h.slice(k);
+};
+COUNCIL_QUESTS.push({ id: 'q13', t: 'اجتاز ركود اقتصادي بحزمة تحفيز', r: 500, v: () => econCycle.stimulus, g: 1 });
+window.__city = { econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
@@ -11694,6 +11738,7 @@ function animate() {
   updateCouncil(dtReal);
   updateDecisions(dtReal);
   updateWalk(dtReal);
+  updateEcon(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
