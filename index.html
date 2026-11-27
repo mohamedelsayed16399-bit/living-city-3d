@@ -2555,9 +2555,9 @@ function updateLighting() {
   const glow = state.hour >= 18.2 || state.hour < 5.8 ? 1 : 0;
   nightGlow += (glow - nightGlow) * 0.08;
   for (const k in facadeCache) for (const m of facadeCache[k]) {
-    m.emissiveIntensity += ((glow ? 0.85 : 0) - m.emissiveIntensity) * 0.06;
+    m.emissiveIntensity += (((glow && !window.__blackoutOn) ? 0.85 : 0) - m.emissiveIntensity) * 0.06;
   }
-  lampHeadMat.color.setHex(glow ? 0xffd57a : 0x555a60);
+  lampHeadMat.color.setHex(window.__blackoutOn ? 0x1a1c20 : (glow ? 0xffd57a : 0x555a60));
   for (const s of shopSigns) s.visible = true; // R17: signs lit all day
 }
 
@@ -11728,7 +11728,204 @@ updateDrive = function (dtReal) {
   drive.panel.innerHTML = html;
 };
 COUNCIL_QUESTS.push({ id: 'q14', t: 'اطفي 3 حرائق بنفسك 🚒', r: 700, v: () => rescue.stats.saved, g: 3 });
-window.__city = { rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R139: POWER GRID - electricity supply vs demand, solar vs coal plants, blackouts with visible darkness and real costs
+const councilPower = { level: 3, solar: false, blackout: false, days: 0, outages: 0, lastDay: 1 };
+try { const r = JSON.parse(localStorage.getItem('livingCityPower') || 'null'); if (r) { if (typeof r.level === 'number') councilPower.level = r.level; councilPower.solar = !!r.solar; if (typeof r.outages === 'number') councilPower.outages = r.outages; } } catch (e) {}
+function powerSave() { try { localStorage.setItem('livingCityPower', JSON.stringify({ level: councilPower.level, solar: councilPower.solar, outages: councilPower.outages })); } catch (e) {} }
+function powerDemand() { return Math.round((state.population || 0) * 0.9 + (state.jobs || 0) * 1.2); }
+function powerCapacity() { return Math.round([0, 400, 900, 1800][councilPower.level] * (councilPower.solar ? 0.8 : 1)); }
+function powerCost() { return Math.round(councilPower.level * (councilPower.solar ? 70 : 40) * (1 + (state.population || 0) / 300)); }
+const _hm2 = councilHappyMod;
+councilHappyMod = function () {
+  let m = _hm2();
+  if (councilPower.blackout) m -= 10;
+  if (!councilPower.solar) m -= councilPower.level; else if (councilPower.level >= 2) m += 1;
+  return m;
+};
+const _est3 = councilEstimate;
+councilEstimate = function () {
+  const e = _est3();
+  e.cost += powerCost(); e.net -= powerCost();
+  if (councilPower.blackout) { const cut = Math.round((e.base + e.taxAdj) * 0.35); e.taxAdj -= cut; e.net -= cut; }
+  return e;
+};
+const blackoutEl = (() => {
+  const css = document.createElement('style');
+  css.textContent = '#blackout{position:fixed;inset:0;background:radial-gradient(ellipse at center,rgba(0,0,20,.35),rgba(0,0,15,.72));z-index:18;display:none;pointer-events:none}' +
+    '#blackoutBanner{position:fixed;left:50%;top:104px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(120,20,20,.92);color:#fff;font-family:Cairo,sans-serif;font-size:14px;z-index:26;display:none;direction:rtl;text-align:center}' +
+    '#blackoutBanner button{margin-right:8px;padding:4px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-family:inherit;cursor:pointer}';
+  document.head.appendChild(css);
+  const o = document.createElement('div'); o.id = 'blackout'; document.body.appendChild(o);
+  const b = document.createElement('div'); b.id = 'blackoutBanner'; document.body.appendChild(b);
+  b.addEventListener('click', e => { e.stopPropagation(); if (e.target.id === 'blackoutFix') powerFix(); });
+  return { o, b };
+})();
+const _lampCol = lampHeadMat.color.getHex();
+function powerApply() {
+  blackoutEl.o.style.display = councilPower.blackout ? 'block' : 'none';
+  blackoutEl.b.style.display = councilPower.blackout ? 'block' : 'none';
+  window.__blackoutOn = councilPower.blackout; lampHeadMat.color.setHex(councilPower.blackout ? 0x1a1c20 : _lampCol);
+  if (councilPower.blackout) blackoutEl.b.innerHTML = '🔌 انقطاع كهرباء! الدخل -35% والسعادة -10 <button id="blackoutFix">إصلاح طارئ 300 💰</button>';
+  recalcStats(); councilRender();
+}
+function powerFix() {
+  if (!councilPower.blackout) return;
+  if (state.money < 300) { toast('محتاج 300 💰 للإصلاح الطارئ'); return; }
+  state.money -= 300; councilPower.blackout = false; councilPower.days = 0;
+  document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+  toast('🔧 الكهرباء رجعت'); powerApply();
+}
+function updatePower(dtReal) {
+  if (state.day === councilPower.lastDay) return;
+  const n = state.day - councilPower.lastDay; councilPower.lastDay = state.day;
+  if (n < 1 || n > 4) return;
+  const dem = powerDemand(), cap = powerCapacity();
+  if (councilPower.blackout) { if (--councilPower.days <= 0) { councilPower.blackout = false; toast('💡 الكهرباء رجعت من نفسها'); powerApply(); } return; }
+  if (dem > cap && dem > 0) {
+    const d = (dem - cap) / dem;
+    if (Math.random() < Math.min(0.9, 0.35 + d)) { councilPower.blackout = true; councilPower.days = 1 + Math.floor(Math.random() * 2); councilPower.outages++; powerSave(); toast('🔌 انقطاع كهرباء! الطلب ' + dem + ' والمحطة ' + cap, 4000); powerApply(); return; }
+    toast('⚠️ الشبكة محمّلة فوق طاقتها (' + dem + '/' + cap + ') — زوّد المحطة', 3200);
+  }
+  councilRender();
+}
+const _decor = councilDecorate;
+councilDecorate = function (h) {
+  h = _decor(h);
+  const dem = powerDemand(), cap = powerCapacity(), over = dem > cap;
+  const row = '<div class="cr"><span>⚡ محطة ' + (councilPower.solar ? '☀️ شمسية' : '🏭 فحم') + '</span><span><button data-c="power-">−</button> <b>' + COUNCIL_LV[councilPower.level] + '</b> <button data-c="power+">+</button></span></div>' +
+    '<div class="cs">طلب الكهرباء <b>' + dem + '</b> / طاقة <b style="color:' + (over ? '#ff8a80' : '#7CFC9a') + '">' + cap + '</b>' + (over ? ' ⚠️ عجز' : ' ✔') + ' · <button id="srcBtn" style="width:auto;padding:0 8px;font-size:12px">بدّل لـ ' + (councilPower.solar ? 'فحم (أرخص، تلوث)' : 'شمسي (أنضف)') + '</button> · انقطاعات: ' + councilPower.outages + '</div>';
+  const k = h.indexOf('<div class="cs">');
+  return k < 0 ? h + row : h.slice(0, k) + row + h.slice(k);
+};
+(function () {
+  const p = document.getElementById('councilPanel');
+  p.addEventListener('click', e => {
+    const t = e.target; if (!t || !t.getAttribute) return;
+    const c = t.getAttribute('data-c');
+    if (c === 'power+' || c === 'power-') {
+      e.stopImmediatePropagation();
+      councilPower.level = Math.max(0, Math.min(3, councilPower.level + (c === 'power+' ? 1 : -1)));
+      powerSave(); recalcStats(); councilRender();
+    } else if (t.id === 'srcBtn') {
+      e.stopImmediatePropagation(); councilPower.solar = !councilPower.solar; powerSave(); recalcStats(); councilRender();
+    }
+  }, true);
+})();
+COUNCIL_QUESTS.push({ id: 'q15', t: 'شغّل المدينة بطاقة شمسية "ممتاز" أو أعلى ☀️', r: 600, v: () => (councilPower.solar && councilPower.level >= 2) ? 1 : 0, g: 1 });
+recalcStats();
+
+// R140: POLICE PURSUIT MODE - drive a police car, chase a thief fleeing along the street grid and arrest him
+const police = (() => {
+  const g = new THREE.Group(); g.visible = false; scene.add(g);
+  const bodyM = new THREE.MeshLambertMaterial({ color: 0x222222 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 1.2, 8), bodyM); body.position.y = 0.9;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), new THREE.MeshLambertMaterial({ color: 0xd9a066 })); head.position.y = 1.8;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.16, 8), new THREE.MeshBasicMaterial({ color: 0xe53935 })); cap.position.y = 2.05;
+  const bag = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.25), new THREE.MeshLambertMaterial({ color: 0x8d6e63 })); bag.position.set(0, 1.0, -0.4);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 16, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  beam.position.y = 8;
+  g.add(body, head, cap, bag, beam);
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'policeBtn'; btn.title = 'وضع الشرطة: طارد الحرامي واقبض عليه'; btn.textContent = '🚓';
+  document.getElementById('sidebtns').appendChild(btn);
+  const css = document.createElement('style'); css.textContent = '#policeBtn.on{background:#1d4ed8;color:#fff}'; document.head.appendChild(css);
+  return { g, btn, on: false, th: null, wait: 0, prog: 0, t: 0, stats: { caught: 0, escaped: 0, earned: 0, streak: 0 } };
+})();
+function policeColor(on) {
+  const body = drive.car.children[0].material, cabin = drive.car.children[2].material;
+  if (!rescue.orig) rescue.orig = [body.color.getHex(), cabin.color.getHex()];
+  body.color.setHex(on ? 0x1d4ed8 : rescue.orig[0]); cabin.color.setHex(on ? 0xdbe7ff : rescue.orig[1]);
+}
+function policeNewThief() {
+  const sp = driveRandomSpot(60, 150, drive.x, drive.z);
+  const kx = Math.round((sp.x + DRV.half) / DRV.step), vert = Math.abs(sp.x - (-DRV.half + kx * DRV.step)) < 0.05;
+  const th = { x: sp.x, z: sp.z, dx: vert ? 0 : 1, dz: vert ? (Math.random() < 0.5 ? 1 : -1) : 0, sp: 10.5, time: 70, lastTurn: 0 };
+  if (!vert) th.dx = Math.random() < 0.5 ? 1 : -1;
+  if (!driveRoadOk(th.x + th.dx * 4, th.z + th.dz * 4)) { th.dx = -th.dx; th.dz = -th.dz; }
+  police.th = th; police.prog = 0;
+  police.g.visible = true; police.g.position.set(th.x, 0, th.z);
+  toast('🚨 حرامي بيجري! الحقه واقف جنبه ثانيتين عشان تقبض عليه');
+}
+function policeStart() {
+  if (drive.active) driveStop();
+  if (walk.active) walkStop();
+  driveStart();
+  police.on = true; policeColor(true);
+  drive.m.phase = 'idle'; drive.pick.g.visible = false; drive.dest.g.visible = false; drive.pax.visible = false;
+  drive.btn.classList.remove('on'); police.btn.classList.add('on'); rescue.bar.style.display = 'block';
+  police.wait = 0; police.th = null;
+  policeNewThief();
+}
+function policeStop() {
+  if (!police.on) return;
+  police.on = false; policeColor(false); police.g.visible = false; police.th = null;
+  rescue.bar.style.display = 'none'; police.btn.classList.remove('on');
+}
+const _driveStopP = driveStop;
+driveStop = function () { policeStop(); _driveStopP(); };
+police.btn.addEventListener('click', e => { e.stopPropagation(); if (police.on) driveStop(); else policeStart(); });
+function policeMoveThief(th, dt) {
+  const step = th.sp * dt;
+  const ahead = (d) => driveRoadOk(th.x + th.dx * d, th.z + th.dz * d);
+  const px = th.x, pz = th.z;
+  th.x += th.dx * step; th.z += th.dz * step;
+  // intersection decision: crossing a road centre line along the direction of travel
+  const a = th.dx ? th.x : th.z, pa = th.dx ? px : pz;
+  const kc = Math.round((a + DRV.half) / DRV.step), c = -DRV.half + kc * DRV.step;
+  if ((pa - c) * (a - c) <= 0 && Math.abs(c) <= DRV.half + 0.1 && police.t - th.lastTurn > 0.6) {
+    th.lastTurn = police.t;
+    const opts = [[th.dx, th.dz], [-th.dz, th.dx], [th.dz, -th.dx]];
+    // snap to the centre line
+    if (th.dx) th.x = c; else th.z = c;
+    const good = opts.filter(o => driveRoadOk(th.x + o[0] * 6, th.z + o[1] * 6));
+    if (good.length) { const pick = Math.random() < 0.45 ? good[0] : good[Math.floor(Math.random() * good.length)]; th.dx = pick[0]; th.dz = pick[1]; }
+    else { th.dx = -th.dx; th.dz = -th.dz; }
+  } else if (!ahead(2.5)) {
+    th.x = px; th.z = pz; th.dx = -th.dx; th.dz = -th.dz;
+  }
+}
+const _updateDriveP = updateDrive;
+updateDrive = function (dtReal) {
+  _updateDriveP(dtReal);
+  if (!police.on || !drive.active) return;
+  const dt = Math.min(dtReal, 0.05);
+  police.t += dt;
+  const th = police.th;
+  let html = '<b>🚓 شرطة</b> · ' + Math.round(Math.abs(drive.v) * 4) + ' كم/س<br>';
+  if (!th) {
+    police.wait -= dt; police.g.visible = false;
+    if (police.wait <= 0) policeNewThief();
+    html += 'مفيش بلاغ... استنى';
+  } else {
+    th.time -= dt;
+    policeMoveThief(th, dt);
+    police.g.position.set(th.x, 0, th.z); police.g.rotation.y = Math.atan2(th.dx, th.dz);
+    const dx = th.x - drive.x, dz = th.z - drive.z, dist = Math.hypot(dx, dz);
+    const near = dist < 7 && Math.abs(drive.v) < 12;
+    police.prog = near ? police.prog + dt / 2 : Math.max(0, police.prog - dt / 4);
+    rescue.bar.firstChild.style.width = Math.round(Math.min(1, police.prog) * 100) + '%';
+    let rel = Math.atan2(dx, dz) - drive.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+    html += '<span style="display:inline-block;font-size:24px;transform:rotate(' + Math.round(-rel * 180 / Math.PI) + 'deg)">⬆️</span> ' + Math.round(dist) + ' م · ⏱ <b>' + Math.max(0, Math.ceil(th.time)) + '</b> ث<br>' + (near ? '🚔 بتقبض عليه... ' + Math.round(Math.min(1, police.prog) * 100) + '%' : 'قرّب من الحرامي (أقل من 7 م) وهدّي');
+    if (police.prog >= 1) {
+      const gain = 300 + Math.round(Math.max(0, th.time) * 3) + Math.min(5, police.stats.streak) * 50;
+      state.money += gain; police.stats.caught++; police.stats.streak++; police.stats.earned += gain;
+      council.crimeP = Math.max(0, (council.crimeP || 0) - 2);
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+      toast('🚔 اتقبض على الحرامي! +' + gain + ' 💰 والجريمة قلّت', 3000); recalcStats();
+      police.th = null; police.wait = 3; police.g.visible = false; rescue.bar.firstChild.style.width = '0%';
+    } else if (th.time <= 0) {
+      state.money -= 200; police.stats.escaped++; police.stats.streak = 0; council.crimeP = Math.min(6, (council.crimeP || 0) + 2);
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+      toast('🏃 الحرامي هرب: -200 💰 والجريمة زادت', 3000); recalcStats();
+      police.th = null; police.wait = 4; police.g.visible = false; rescue.bar.firstChild.style.width = '0%';
+    }
+  }
+  html += '<br>اتقبض: <b>' + police.stats.caught + '</b> · هرب: <b>' + police.stats.escaped + '</b> · كسب: <b>' + police.stats.earned + '</b>';
+  drive.panel.innerHTML = html;
+};
+COUNCIL_QUESTS.push({ id: 'q16', t: 'اقبض على 3 حرامية بنفسك 🚓', r: 700, v: () => police.stats.caught, g: 3 });
+window.__city = { police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
@@ -11865,6 +12062,7 @@ function animate() {
   updateDecisions(dtReal);
   updateWalk(dtReal);
   updateEcon(dtReal);
+  updatePower(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
