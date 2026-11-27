@@ -11602,7 +11602,133 @@ councilDecorate = function (h) {
   return k < 0 ? h + row : h.slice(0, k) + row + h.slice(k);
 };
 COUNCIL_QUESTS.push({ id: 'q13', t: 'اجتاز ركود اقتصادي بحزمة تحفيز', r: 500, v: () => econCycle.stimulus, g: 1 });
-window.__city = { econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R138: FIRE CHIEF MODE - drive a red fire truck to burning buildings, park beside them and put the fire out before the clock runs out
+const rescue = (() => {
+  const grp = new THREE.Group(); grp.visible = false; scene.add(grp);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 22, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.36, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  beam.position.y = 11;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(3, 0.22, 8, 28), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
+  ring.rotation.x = Math.PI / 2; ring.position.y = 0.4;
+  grp.add(beam, ring);
+  const flames = [];
+  const fm = [new THREE.MeshBasicMaterial({ color: 0xff4a1c }), new THREE.MeshBasicMaterial({ color: 0xffa51e }), new THREE.MeshBasicMaterial({ color: 0xffe14a })];
+  for (let i = 0; i < 6; i++) { const f = new THREE.Mesh(new THREE.ConeGeometry(0.9 - (i % 3) * 0.18, 2.6 - (i % 3) * 0.5, 6), fm[i % 3]); scene.add(f); f.visible = false; flames.push(f); }
+  const spray = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 0.2, 0.6), new THREE.MeshBasicMaterial({ color: 0xcfe8ff, transparent: true, opacity: 0.85 }), 14);
+  spray.instanceMatrix.setUsage(THREE.DynamicDrawUsage); spray.visible = false; scene.add(spray);
+  const css = document.createElement('style');
+  css.textContent = '#rescueBtn.on{background:#d62828;color:#fff}#rescueBar{position:fixed;left:50%;top:58px;transform:translateX(-50%);width:min(260px,60vw);height:14px;border-radius:8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.3);z-index:21;display:none;overflow:hidden}#rescueBar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4aa3ff,#9be7ff)}';
+  document.head.appendChild(css);
+  const bar = document.createElement('div'); bar.id = 'rescueBar'; bar.innerHTML = '<i></i>'; document.body.appendChild(bar);
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'rescueBtn'; btn.title = 'وضع رئيس المطافي: سوق عربية الإطفاء واطفي الحرائق'; btn.textContent = '🚒';
+  document.getElementById('sidebtns').appendChild(btn);
+  return { grp, beam, ring, flames, spray, bar, btn, on: false, inc: null, prog: 0, t: 0, wait: 0,
+    stats: { saved: 0, lost: 0, earned: 0, streak: 0 }, orig: null };
+})();
+function rescueColor(on) {
+  const body = drive.car.children[0].material, cabin = drive.car.children[2].material;
+  if (!rescue.orig) rescue.orig = [body.color.getHex(), cabin.color.getHex()];
+  body.color.setHex(on ? 0xd62828 : rescue.orig[0]); cabin.color.setHex(on ? 0xff8a80 : rescue.orig[1]);
+}
+function rescueNewIncident() {
+  const cands = [];
+  for (const r of state.plots.values()) if (r.mesh && r.mesh.userData && r.mesh.userData.h) cands.push(r);
+  rescue.prog = 0; rescue.bar.firstChild.style.width = '0%';
+  if (!cands.length) { rescue.inc = null; rescue.wait = 8; return; }
+  for (let n = 0; n < 40; n++) {
+    const r = cands[Math.floor(Math.random() * cands.length)];
+    const bx = r.mesh.position.x, bz = r.mesh.position.z;
+    const snap = v => { const k = Math.max(0, Math.min(DRV.roadK - 1, Math.round((v + DRV.half) / DRV.step))); return -DRV.half + k * DRV.step; };
+    const A = { x: snap(bx), z: bz }, B = { x: bx, z: snap(bz) };
+    const da = Math.abs(A.x - bx), db = Math.abs(B.z - bz);
+    const spot = da < db ? A : B;
+    if (!driveRoadOk(spot.x, spot.z) || (spot.x > -22 && spot.x < -4)) continue;
+    if (Math.hypot(spot.x - drive.x, spot.z - drive.z) < 35 && n < 30) continue;
+    const dist = Math.hypot(spot.x - drive.x, spot.z - drive.z);
+    rescue.inc = { rec: r, bx, bz, h: r.mesh.userData.h, x: spot.x, z: spot.z, limit: dist / 10 + 25, time: 0 };
+    rescue.inc.time = rescue.inc.limit;
+    rescue.grp.position.set(spot.x, 0, spot.z); rescue.grp.visible = true;
+    toast('🔥 حريق! سوق للعمود الأحمر واقف جنبه ' + Math.round(rescue.inc.limit) + ' ثانية');
+    return;
+  }
+  rescue.inc = null; rescue.wait = 5;
+}
+function rescueStart() {
+  if (drive.active) driveStop();
+  if (walk.active) walkStop();
+  driveStart();
+  rescue.on = true; rescueColor(true);
+  drive.m.phase = 'idle'; drive.pick.g.visible = false; drive.dest.g.visible = false; drive.pax.visible = false;
+  drive.btn.classList.remove('on'); rescue.btn.classList.add('on'); rescue.bar.style.display = 'block';
+  rescue.wait = 0; rescue.inc = null;
+  toast('🚒 رئيس المطافي: اركن جنب الحريق لحد ما يطفي');
+  rescueNewIncident();
+}
+function rescueStop() {
+  if (!rescue.on) return;
+  rescue.on = false; rescueColor(false);
+  rescue.grp.visible = false; rescue.flames.forEach(f => f.visible = false); rescue.spray.visible = false;
+  rescue.bar.style.display = 'none'; rescue.btn.classList.remove('on'); rescue.inc = null;
+}
+const _driveStopR = driveStop;
+driveStop = function () { rescueStop(); _driveStopR(); };
+const _driveStartR = driveStart;
+rescue.btn.addEventListener('click', e => { e.stopPropagation(); if (rescue.on) driveStop(); else rescueStart(); });
+const _updateDriveR = updateDrive;
+updateDrive = function (dtReal) {
+  _updateDriveR(dtReal);
+  if (!rescue.on || !drive.active) return;
+  const dt = Math.min(dtReal, 0.05);
+  rescue.t += dt;
+  fireCooldown = Math.max(fireCooldown, 90);
+  const I = rescue.inc;
+  let html = '<b>🚒 رئيس المطافي</b> · ' + Math.round(Math.abs(drive.v) * 4) + ' كم/س<br>';
+  if (!I) {
+    rescue.wait -= dt; rescue.spray.visible = false; rescue.flames.forEach(f => f.visible = false);
+    if (rescue.wait <= 0) rescueNewIncident();
+    html += 'مفيش حرائق دلوقتي... استنى البلاغ الجاي';
+  } else {
+    const dx = I.x - drive.x, dz = I.z - drive.z, dist = Math.hypot(dx, dz);
+    I.time -= dt;
+    const near = dist < 9 && Math.abs(drive.v) < 6;
+    rescue.prog = near ? rescue.prog + dt / 6 : Math.max(0, rescue.prog - dt / 18);
+    rescue.bar.firstChild.style.width = Math.round(Math.min(1, rescue.prog) * 100) + '%';
+    const inten = Math.max(0.05, 1 - rescue.prog);
+    rescue.beam.scale.setScalar(1); rescue.ring.scale.setScalar(1 + Math.sin(rescue.t * 5) * 0.1);
+    rescue.flames.forEach((f, i) => {
+      f.visible = true; const sc = inten * (0.9 + Math.sin(rescue.t * 9 + i * 2.3) * 0.3);
+      f.scale.set(sc, sc, sc); f.position.set(I.bx + Math.cos(i * 1.05) * 1.8, 1.2 * sc, I.bz + Math.sin(i * 1.05) * 1.8);
+    });
+    // water spray from the truck to the building while putting it out
+    rescue.spray.visible = near;
+    if (near) for (let i = 0; i < 14; i++) {
+      const tt = ((i / 14) + rescue.t * 0.9) % 1;
+      _v.set(drive.x + (I.bx - drive.x) * tt, 2.4 + (I.h * 0.45) * tt + Math.sin(tt * Math.PI) * 2, drive.z + (I.bz - drive.z) * tt);
+      _q.setFromAxisAngle(_UP, Math.atan2(I.bx - drive.x, I.bz - drive.z)); _s.set(1, 1, 1); _m4.compose(_v, _q, _s);
+      rescue.spray.setMatrixAt(i, _m4);
+    }
+    rescue.spray.instanceMatrix.needsUpdate = true;
+    let rel = Math.atan2(dx, dz) - drive.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+    html += '<span style="display:inline-block;font-size:24px;transform:rotate(' + Math.round(-rel * 180 / Math.PI) + 'deg)">⬆️</span> ' + Math.round(dist) + ' م · ⏱ <b>' + Math.max(0, Math.ceil(I.time)) + '</b> ث<br>' + (near ? '💦 بتطفّي... ' + Math.round(Math.min(1, rescue.prog) * 100) + '%' : 'اقرب من 9 م وهدّي السرعة');
+    if (rescue.prog >= 1) {
+      const gain = 250 + Math.round(Math.max(0, I.time) * 3) + Math.min(5, rescue.stats.streak) * 50;
+      state.money += gain; rescue.stats.saved++; rescue.stats.streak++; rescue.stats.earned += gain;
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+      toast('✅ اتطفّى الحريق! +' + gain + ' 💰 (سلسلة ' + rescue.stats.streak + ')', 3000);
+      rescue.inc = null; rescue.wait = 3; rescue.grp.visible = false; rescue.flames.forEach(f => f.visible = false); rescue.spray.visible = false; rescue.bar.firstChild.style.width = '0%';
+    } else if (I.time <= 0) {
+      state.money -= 300; rescue.stats.lost++; rescue.stats.streak = 0; council.evMod = Math.max(-12, (council.evMod || 0) - 3);
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+      toast('💥 المبنى اتحرق: -300 💰 والسعادة نزلت', 3200); recalcStats();
+      rescue.inc = null; rescue.wait = 4; rescue.grp.visible = false; rescue.flames.forEach(f => f.visible = false); rescue.spray.visible = false; rescue.bar.firstChild.style.width = '0%';
+    }
+  }
+  html += '<br>اتنقذ: <b>' + rescue.stats.saved + '</b> · ضاع: <b>' + rescue.stats.lost + '</b> · كسب: <b>' + rescue.stats.earned + '</b>';
+  drive.panel.innerHTML = html;
+};
+COUNCIL_QUESTS.push({ id: 'q14', t: 'اطفي 3 حرائق بنفسك 🚒', r: 700, v: () => rescue.stats.saved, g: 3 });
+window.__city = { rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
