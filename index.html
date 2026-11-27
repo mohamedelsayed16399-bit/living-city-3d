@@ -10783,6 +10783,63 @@ function updateComet(dtReal) {
   c.halo.scale.setScalar(1 + Math.sin(c.t * 1.7) * 0.08);
 }
 
+
+// R131: gazelle herd bounding across the west desert, 7-10h and 16-18h
+const gazelles = (() => {
+  const list = [];
+  const bodyM = new THREE.MeshLambertMaterial({ color: 0xc89b5e });
+  const bellyM = new THREE.MeshLambertMaterial({ color: 0xf1e6d0 });
+  const darkM = new THREE.MeshLambertMaterial({ color: 0x3b2a1a });
+  for (let i = 0; i < 8; i++) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 1.5), bodyM);
+    body.position.y = 1.0;
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 1.3), bellyM);
+    belly.position.y = 0.78;
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.7, 0.28), bodyM);
+    neck.position.set(0, 1.5, 0.75); neck.rotation.x = -0.4;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.5), bodyM);
+    head.position.set(0, 1.85, 1.05);
+    const h1 = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.55, 5), darkM); h1.position.set(0.1, 2.15, 0.95); h1.rotation.z = -0.15;
+    const h2 = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.55, 5), darkM); h2.position.set(-0.1, 2.15, 0.95); h2.rotation.z = 0.15;
+    g.add(body, belly, neck, head, h1, h2);
+    const legs = [];
+    for (const [lx, lz] of [[0.2, 0.55], [-0.2, 0.55], [0.2, -0.55], [-0.2, -0.55]]) {
+      const lg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.9, 0.1), darkM);
+      lg.geometry.translate(0, -0.45, 0);
+      lg.position.set(lx, 0.85, lz);
+      g.add(lg); legs.push(lg);
+    }
+    g.visible = false;
+    g.scale.setScalar(1.25);
+    scene.add(g);
+    list.push({ g, legs, off: i * 4.5, lane: -203 + (i % 3) * 4.5, ph: i * 0.7 });
+  }
+  return { list, t: 0, toastedDay: -1 };
+})();
+function updateGazelles(dtReal) {
+  const on = (state.hour >= 7 && state.hour < 10) || (state.hour >= 16 && state.hour < 18);
+  for (const a of gazelles.list) a.g.visible = on;
+  if (!on) return;
+  if (gazelles.toastedDay !== state.day) {
+    gazelles.toastedDay = state.day;
+    toast('\u{1F98C} قطيع غزلان بيجري في الصحرا الغربية');
+  }
+  gazelles.t += dtReal;
+  const span = 76, zMin = 52;
+  for (const a of gazelles.list) {
+    const u = ((gazelles.t * 7 + a.off) % (span * 2));
+    const dir = u < span ? 1 : -1;
+    const z = dir > 0 ? zMin + u : zMin + (span * 2 - u);
+    const hop = Math.abs(Math.sin(gazelles.t * 5 + a.ph));
+    a.g.position.set(a.lane + Math.sin(gazelles.t * 0.4 + a.ph) * 1.5, hop * 1.0, z);
+    a.g.rotation.y = dir > 0 ? 0 : Math.PI;
+    const sw = Math.sin(gazelles.t * 5 + a.ph) * 0.8;
+    a.legs[0].rotation.x = sw; a.legs[1].rotation.x = sw;
+    a.legs[2].rotation.x = -sw; a.legs[3].rotation.x = -sw;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10913,6 +10970,7 @@ function animate() {
   updateKayaks(dtReal);
   updateDustDevil(dtReal);
   updateComet(dtReal);
+  updateGazelles(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
