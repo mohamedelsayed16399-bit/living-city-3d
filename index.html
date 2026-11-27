@@ -7045,6 +7045,71 @@ function updateBreadBike(dtReal) {
 }
 initBreadBike();
 
+// R87: street sweeper (عربية الكنس) working the corniche at dawn, 4-7h
+let sweeperTruck = null;
+function initSweeper() {
+  if (sweeperTruck) return;
+  const g = new THREE.Group();
+  const orange = new THREE.MeshLambertMaterial({ color: 0xe87a2f });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 3.2), orange);
+  body.position.y = 0.95;
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.8, 10), new THREE.MeshLambertMaterial({ color: 0xf2a54a }));
+  tank.rotation.x = Math.PI / 2;
+  tank.position.set(0, 1.35, 0.6);
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 0.9), orange);
+  cab.position.set(0, 1.15, -1.8);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 0.15), new THREE.MeshLambertMaterial({ color: 0xbfe3f2 }));
+  glass.position.set(0, 1.3, -2.2);
+  g.add(body, tank, cab, glass);
+  // two spinning disc brushes at the front corners
+  const brushM = new THREE.MeshLambertMaterial({ color: 0xd9c69c });
+  const brushes = [];
+  for (const bx of [-0.85, 0.85]) {
+    const br = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.14, 10), brushM);
+    br.position.set(bx, 0.12, -2.0);
+    g.add(br);
+    brushes.push(br);
+  }
+  // amber beacon
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffb02f }));
+  beacon.position.set(0, 1.75, -1.8);
+  g.add(beacon);
+  const wheelM = new THREE.MeshLambertMaterial({ color: 0x1c1c1c });
+  for (const [wx, wz] of [[-0.8, -1.2], [0.8, -1.2], [-0.8, 1.1], [0.8, 1.1]]) {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.22, 8), wheelM);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(wx, 0.3, wz);
+    g.add(wh);
+  }
+  g.visible = false;
+  scene.add(g);
+  sweeperTruck = { g, brushes, beacon, t: 0, toastedDay: -1 };
+}
+function updateSweeper(dtReal) {
+  if (!sweeperTruck) return;
+  const f = sweeperTruck;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = h >= 4 && h < 7;
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("🧹 عربية الكنس بتنضف الكورنيش قبل الصبح!");
+  }
+  f.g.visible = on;
+  if (!on) return;
+  // very slow up-and-down on the corniche road west lane
+  const range = 90, speed = 1.8;
+  const cyc = (f.t * speed) % (range * 2);
+  const z = cyc < range ? -range / 2 + cyc : range / 2 - (cyc - range);
+  const dir = cyc < range ? 1 : -1;
+  f.g.position.set(15.5, 0, z);
+  f.g.rotation.y = dir > 0 ? 0 : Math.PI;
+  for (const b of f.brushes) b.rotation.y += 14 * dtReal;
+  f.beacon.visible = Math.sin(f.t * 6) > 0;
+}
+initSweeper();
+
+
 
 
 
@@ -7304,6 +7369,7 @@ function animate() {
   updateFishBoats(dtReal);
   updateHanTour(dtReal);
   updateBreadBike(dtReal);
+  updateSweeper(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
