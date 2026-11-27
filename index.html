@@ -6787,6 +6787,76 @@ function updateWedding(dtReal) {
 }
 initWedding();
 
+// R84: morning fishing boats (مراكب الصيد) casting nets on the river, 5-9h
+let fishBoats = null;
+function initFishBoats() {
+  if (fishBoats) return;
+  const boats = [];
+  const woodM = new THREE.MeshLambertMaterial({ color: 0x7a5230 });
+  const wood2M = new THREE.MeshLambertMaterial({ color: 0x5f3f24 });
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.35, 2.6, 8, 1), woodM);
+    hull.rotation.x = Math.PI / 2;
+    hull.rotation.z = Math.PI / 2;
+    hull.scale.set(1, 1, 0.55);
+    hull.position.y = 0.3;
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 2.5), wood2M);
+    rim.position.set(0.5, 0.55, 0);
+    const rim2 = rim.clone(); rim2.position.x = -0.5;
+    const fisher = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.21, 0.6, 6), new THREE.MeshLambertMaterial({ color: [0x3f6fae, 0x9a5a2f, 0x4a7a4f][i] }));
+    fisher.position.set(0, 0.85, 0.3);
+    const fHead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+    fHead.position.set(0, 1.3, 0.3);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.15, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0xf2ede0 }));
+    cap.position.set(0, 1.42, 0.3);
+    g.add(hull, rim, rim2, fisher, fHead, cap);
+    g.visible = false;
+    scene.add(g);
+    // cast net: wireframe disc that blooms on the water beside the boat
+    const net = new THREE.Mesh(new THREE.CircleGeometry(1.6, 14), new THREE.MeshBasicMaterial({ color: 0xcfd6cc, wireframe: true, transparent: true, opacity: 0.85 }));
+    net.rotation.x = -Math.PI / 2;
+    net.visible = false;
+    scene.add(net);
+    boats.push({ g, net, ph: i * 2.6, lane: i === 1 ? -15.5 : -10.5, z0: -55 + i * 45, drift: 0.5 + i * 0.14 });
+  }
+  fishBoats = { boats, t: 0, toastedDay: -1 };
+}
+function updateFishBoats(dtReal) {
+  if (!fishBoats) return;
+  const f = fishBoats;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = h >= 5 && h < 9;
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("🎣 مراكب الصيد على النيل — رزق الصباحية!");
+  }
+  for (const b of f.boats) {
+    b.g.visible = on;
+    if (!on) { b.net.visible = false; continue; }
+    // slow drift along the channel with gentle rocking
+    const z = b.z0 + Math.sin(f.t * 0.1 + b.ph) * 14;
+    const x = b.lane + Math.sin(f.t * 0.23 + b.ph) * 1.2;
+    b.g.position.set(x, 0.05, z);
+    b.g.rotation.y = Math.sin(f.t * 0.23 + b.ph) * 0.3;
+    b.g.rotation.z = Math.sin(f.t * 1.1 + b.ph) * 0.05;
+    // net cast cycle: bloom 1.6s, hold 2s, gone 4s
+    const cyc = (f.t + b.ph * 2.3) % 7.6;
+    if (cyc < 3.6) {
+      const k = Math.min(1, cyc / 1.6);
+      b.net.visible = true;
+      b.net.scale.setScalar(0.15 + k * 0.85);
+      b.net.material.opacity = 0.85 - k * 0.25;
+      b.net.position.set(x + (b.lane < -13 ? 1.9 : -1.9), 0.08, z + 0.8);
+    } else {
+      b.net.visible = false;
+    }
+  }
+}
+initFishBoats();
+
+
 
 
 
@@ -7040,6 +7110,7 @@ function animate() {
   updateParagliders(dtReal);
   updateSufiShow(dtReal);
   updateWedding(dtReal);
+  updateFishBoats(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
