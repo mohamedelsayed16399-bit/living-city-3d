@@ -10555,6 +10555,78 @@ function updateDroneShow(dtReal) {
   d.pts.geometry.attributes.color.needsUpdate = true;
 }
 
+
+// R126: rowing eight training on the Nile, 6-9h, oars flapping, coach launch
+const rowing = (() => {
+  const grp = new THREE.Group();
+  const hullM = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.25, 9.5), hullM);
+  hull.position.y = 0.2;
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.2, 8), hullM);
+  bow.rotation.x = Math.PI / 2; bow.position.set(0, 0.2, 5.3);
+  const stern = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.0, 8), hullM);
+  stern.rotation.x = -Math.PI / 2; stern.position.set(0, 0.2, -5.2);
+  grp.add(hull, bow, stern);
+  const jerseyC = [0xe3352b, 0x2b7de3];
+  const oars = [];
+  for (let i = 0; i < 8; i++) {
+    const z = -3.4 + i * 0.95;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, 0.55, 8), new THREE.MeshLambertMaterial({ color: jerseyC[i % 2] }));
+    body.position.set(0, 0.68, z);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshLambertMaterial({ color: 0xd9a066 }));
+    head.position.set(0, 1.08, z);
+    grp.add(body, head);
+    const side = i % 2 ? 1 : -1;
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.3, 0.45, z);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.6, 5), new THREE.MeshLambertMaterial({ color: 0x222831 }));
+    shaft.rotation.z = Math.PI / 2; shaft.position.x = side * 1.2;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.22), new THREE.MeshLambertMaterial({ color: jerseyC[i % 2] }));
+    blade.position.x = side * 2.45;
+    pivot.add(shaft, blade);
+    grp.add(pivot);
+    oars.push({ pivot, side, body });
+  }
+  const cox = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), new THREE.MeshLambertMaterial({ color: 0xd9a066 }));
+  cox.position.set(0, 0.7, -4.4);
+  grp.add(cox);
+  // coach launch
+  const launch = new THREE.Group();
+  const lh = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 3.2), new THREE.MeshLambertMaterial({ color: 0x2b6cb0 }));
+  lh.position.y = 0.3;
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 1.0), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  cab.position.set(0, 0.75, -0.2);
+  launch.add(lh, cab);
+  grp.visible = false; launch.visible = false;
+  scene.add(grp); scene.add(launch);
+  return { grp, launch, oars, z: -90, dir: 1, toastedDay: -1 };
+})();
+function updateRowing(dtReal) {
+  const r = rowing;
+  const on = state.hour >= 6 && state.hour < 9;
+  r.grp.visible = on; r.launch.visible = on;
+  if (!on) return;
+  if (r.toastedDay !== state.day) {
+    r.toastedDay = state.day;
+    toast('\u{1F6A3} فريق التجديف نزل النيل — تمرين الصبح');
+  }
+  const t = performance.now() / 1000;
+  const stroke = (t * 0.9) % 1;
+  r.z += r.dir * 5.5 * dtReal;
+  if (r.z > 100) { r.z = 100; r.dir = -1; }
+  if (r.z < -100) { r.z = -100; r.dir = 1; }
+  r.grp.position.set(-13, 0, r.z);
+  r.grp.rotation.y = r.dir > 0 ? 0 : Math.PI;
+  r.launch.position.set(-9.6, 0, r.z - r.dir * 9);
+  r.launch.rotation.y = r.dir > 0 ? 0 : Math.PI;
+  const swing = Math.sin(stroke * Math.PI * 2);
+  for (const o of r.oars) {
+    o.pivot.rotation.y = o.side * swing * 0.45;
+    o.pivot.rotation.z = Math.max(0, -swing) * 0.35 * o.side * -1;
+    o.body.rotation.x = swing * 0.25;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10681,6 +10753,7 @@ function animate() {
   updateJetSkis(dtReal);
   updateIftarCannon(dtReal);
   updateDroneShow(dtReal);
+  updateRowing(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
