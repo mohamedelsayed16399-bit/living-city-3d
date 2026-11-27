@@ -6290,6 +6290,125 @@ function updateMetroEntrance(dtReal) {
 }
 initMetroEntrance();
 
+// R78: night food carts (عربيات الأكل) on the corniche 18-2h — koshary, foul, sweet potato; lamps, steam, queues
+let foodCarts = null;
+function initFoodCarts() {
+  if (foodCarts) return;
+  const defs = [
+    { z: -6, body: 0xd42b1e, trim: 0xffffff, label: 'كشري التحرير', steam: true },
+    { z: 0, body: 0x1e5c8a, trim: 0xf2c020, label: 'فول وطعمية', steam: true },
+    { z: 6, body: 0x7a4a2a, trim: 0xffe9a8, label: 'بطاطا حلوة', steam: false }
+  ];
+  const CX = 6.5;
+  const carts = [];
+  for (const d of defs) {
+    const grp = new THREE.Group();
+    // cart body on wheels
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 2.6), new THREE.MeshLambertMaterial({ color: d.body }));
+    body.position.y = 0.95;
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 2.7), new THREE.MeshLambertMaterial({ color: d.trim }));
+    counter.position.y = 1.6;
+    grp.add(body, counter);
+    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x222228 });
+    for (const wz of [-0.9, 0.9]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.15, 10), wheelMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(-0.7, 0.3, wz);
+      grp.add(w);
+    }
+    // pots on the counter
+    for (let i = 0; i < 3; i++) {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.35, 8), new THREE.MeshLambertMaterial({ color: 0xb8b8c0 }));
+      pot.position.set(0, 1.85, -0.8 + i * 0.8);
+      grp.add(pot);
+    }
+    // lamp post + warm bulb
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), new THREE.MeshLambertMaterial({ color: 0x444444 }));
+    pole.position.set(0.6, 2.6, 0);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffd75a }));
+    bulb.position.set(0.6, 3.75, 0);
+    grp.add(pole, bulb);
+    // label sign
+    const cv = document.createElement('canvas'); cv.width = 192; cv.height = 40;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#1a1a2e'; g.fillRect(0, 0, 192, 40);
+    g.fillStyle = '#ffe9a8'; g.font = 'bold 24px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(d.label, 96, 22);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.45), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+    sign.position.set(0, 2.3, 0);
+    grp.add(sign);
+    // vendor
+    const vendor = new THREE.Group();
+    const apron = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.75, 6), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+    apron.position.y = 0.6;
+    const vhead = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: 0xa8763e }));
+    vhead.position.y = 1.15;
+    vendor.add(apron, vhead);
+    vendor.position.set(-1.1, 0.16, 0.4);
+    grp.add(vendor);
+    // steam puffs
+    const puffs = [];
+    if (d.steam) {
+      for (let i = 0; i < 3; i++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }));
+        puff.position.set(0, 2.1, -0.8 + i * 0.8);
+        grp.add(puff);
+        puffs.push(puff);
+      }
+    }
+    grp.position.set(CX, 0.16, d.z);
+    grp.visible = false;
+    scene.add(grp);
+    carts.push({ grp, bulb, puffs, z: d.z });
+  }
+  // night customers
+  const queue = [];
+  for (let i = 0; i < 6; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.7, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.35, 0.5) }));
+    shirt.position.y = 0.55;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: [0xc89b6d, 0xa8763e, 0x8a5a2b][i % 3] }));
+    head.position.y = 1.08;
+    p.add(shirt, head);
+    p.userData = { cart: i % 3, slot: Math.floor(i / 3), ph: Math.random() * 6 };
+    p.visible = false;
+    scene.add(p);
+    queue.push(p);
+  }
+  foodCarts = { carts, queue, t: 0, toastedDay: -1 };
+}
+function updateFoodCarts(dtReal) {
+  if (!foodCarts) return;
+  const f = foodCarts;
+  f.t += dtReal;
+  const h = state.hour;
+  const open = h >= 18 || h < 2;
+  if (open && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('🌯 عربيات الأكل نزلت الكورنيش — كشري وفول وبطاطا بالليل!');
+  }
+  for (const c of f.carts) {
+    c.grp.visible = open;
+    if (!open) continue;
+    c.bulb.material.color.setHSL(0.12, 0.85, 0.55 + Math.sin(f.t * 7 + c.z) * 0.08);
+    c.puffs.forEach((p, i) => {
+      const k = (f.t * 0.35 + i * 0.33 + c.z) % 1;
+      p.position.y = 2.1 + k * 1.2;
+      p.material.opacity = 0.35 * (1 - k);
+      p.scale.setScalar(0.7 + k * 1.1);
+    });
+  }
+  for (const p of f.queue) {
+    p.visible = open;
+    if (!open) continue;
+    const u = p.userData;
+    p.position.set(8.6 + u.slot * 0.9, 0.16, -6 + u.cart * 6 + Math.sin(f.t * 0.6 + u.ph) * 0.25);
+    p.rotation.y = -Math.PI / 2;
+  }
+}
+initFoodCarts();
+
+
 
 
 
@@ -6531,6 +6650,7 @@ function animate() {
   updateBalloons(dtReal);
   updateFeluccaRace(dtReal);
   updateMetroEntrance(dtReal);
+  updateFoodCarts(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
