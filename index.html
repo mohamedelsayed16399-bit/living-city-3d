@@ -6408,6 +6408,95 @@ function updateFoodCarts(dtReal) {
 }
 initFoodCarts();
 
+// R79: pigeon towers (أبراج الحمام) in the north-west alley — conical mud towers, pigeons circling by day
+let pigeonTowers = null;
+function initPigeonTowers() {
+  if (pigeonTowers) return;
+  const PX = -37.5, spots = [64, 72, 80];
+  const towers = [];
+  for (let i = 0; i < 3; i++) {
+    const grp = new THREE.Group();
+    const hgt = 6 + i * 1.2;
+    // tapered mud-brick body
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.5, hgt, 10), new THREE.MeshLambertMaterial({ color: 0xb5855a }));
+    body.position.y = hgt / 2;
+    grp.add(body);
+    // ledge rings
+    for (let r = 0; r < 3; r++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.35 - r * 0.18, 0.09, 6, 14), new THREE.MeshLambertMaterial({ color: 0x8a5f3a }));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = hgt * (0.4 + r * 0.22);
+      grp.add(ring);
+    }
+    // clay pot caps on top (classic لَوَّاحة)
+    for (let p = 0; p < 6; p++) {
+      const a = p / 6 * Math.PI * 2;
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0x9a6a42 }));
+      pot.position.set(Math.cos(a) * 0.55, hgt + 0.25, Math.sin(a) * 0.55);
+      grp.add(pot);
+    }
+    // entry holes: dark specks band
+    for (let p = 0; p < 8; p++) {
+      const a = p / 8 * Math.PI * 2;
+      const hole = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 5), new THREE.MeshBasicMaterial({ color: 0x3a2a1a }));
+      hole.position.set(Math.cos(a) * (1.15 - 0.1), hgt * 0.78, Math.sin(a) * (1.15 - 0.1));
+      grp.add(hole);
+    }
+    grp.position.set(PX, 0.16, spots[i]);
+    scene.add(grp);
+    towers.push({ grp, hgt, z: spots[i] });
+  }
+  // pigeon flock orbiting the towers
+  const pigeons = [];
+  for (let i = 0; i < 12; i++) {
+    const bird = new THREE.Group();
+    const bBody = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), new THREE.MeshLambertMaterial({ color: i % 3 ? 0xd8d8de : 0x8a8a95 }));
+    bBody.scale.set(1.4, 0.9, 0.9);
+    const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.2), new THREE.MeshLambertMaterial({ color: 0xc0c0c8 }));
+    const wingR = wingL.clone();
+    wingL.position.set(-0.3, 0.05, 0);
+    wingR.position.set(0.3, 0.05, 0);
+    bird.add(bBody, wingL, wingR);
+    bird.visible = false;
+    scene.add(bird);
+    pigeons.push({ bird, wingL, wingR, tw: i % 3, ph: i * 0.55, r: 3.5 + (i % 4) * 1.3, h: 7.5 + (i % 3) * 1.8 });
+  }
+  // small sign
+  const cv = document.createElement('canvas'); cv.width = 224; cv.height = 40;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#5a3a1e'; g.fillRect(0, 0, 224, 40);
+  g.fillStyle = '#f2e0b8'; g.font = 'bold 24px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('أبراج الحمام 🕊️', 112, 22);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.6), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+  sign.position.set(PX + 2.2, 1.6, 58.5);
+  sign.rotation.y = Math.PI;
+  scene.add(sign);
+  pigeonTowers = { towers, pigeons, sign, t: 0, toastedDay: -1, PX };
+}
+function updatePigeonTowers(dtReal) {
+  if (!pigeonTowers) return;
+  const pt = pigeonTowers;
+  pt.t += dtReal;
+  const h = state.hour;
+  const day = h >= 6 && h < 19;
+  if (day && pt.toastedDay !== state.day) {
+    pt.toastedDay = state.day;
+    toast('🕊️ الحمام طالع يلف فوق الأبراج — مشهد بلدي أصيل!');
+  }
+  for (const pg of pt.pigeons) {
+    pg.bird.visible = day;
+    if (!day) continue;
+    const tw = pt.towers[pg.tw];
+    const a = pt.t * (0.5 + pg.tw * 0.12) + pg.ph;
+    pg.bird.position.set(pt.PX + Math.cos(a) * pg.r, pg.h + Math.sin(pt.t * 0.8 + pg.ph) * 0.8, tw.z + Math.sin(a) * pg.r);
+    pg.bird.rotation.y = -a - Math.PI / 2;
+    const flap = Math.sin(pt.t * 10 + pg.ph) * 0.6;
+    pg.wingL.rotation.x = flap; pg.wingR.rotation.x = -flap;
+  }
+}
+initPigeonTowers();
+
+
 
 
 
@@ -6651,6 +6740,7 @@ function animate() {
   updateFeluccaRace(dtReal);
   updateMetroEntrance(dtReal);
   updateFoodCarts(dtReal);
+  updatePigeonTowers(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
