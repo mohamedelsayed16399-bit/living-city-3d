@@ -6191,6 +6191,106 @@ function updateFeluccaRace(dtReal) {
 }
 initFeluccaRace();
 
+// R77: metro station entrance (مدخل محطة المترو) at (45,39) — stair tower up to platform, footbridge over tracks, M sign, rush-hour crowd
+let metroEntrance = null;
+function initMetroEntrance() {
+  if (metroEntrance) return;
+  const MX = 45, MZ = 39;
+  const grp = new THREE.Group();
+  // stair tower frame: 4 columns + roof
+  const colMat = new THREE.MeshLambertMaterial({ color: 0x2f5f8a });
+  for (const [cx, cz] of [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]]) {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.25, 7.0, 0.25), colMat);
+    col.position.set(MX + cx, 3.5, MZ + cz);
+    grp.add(col);
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.2, 3.6), new THREE.MeshLambertMaterial({ color: 0xd8d2c0 }));
+  roof.position.set(MX, 7.05, MZ);
+  grp.add(roof);
+  // switchback stairs: two flights visible
+  const stepMat = new THREE.MeshLambertMaterial({ color: 0xb8b0a0 });
+  for (let i = 0; i < 9; i++) {
+    const st = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.45), stepMat);
+    st.position.set(MX, 0.2 + i * 0.38, MZ - 1.2 + i * 0.28);
+    grp.add(st);
+  }
+  for (let i = 0; i < 9; i++) {
+    const st = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.18, 2.4), stepMat);
+    st.position.set(MX - 1.0 + i * 0.28 * 0 - 0.0 - (i * 0.28), 3.7 + i * 0.38, MZ + 1.0);
+    grp.add(st);
+  }
+  // footbridge west over the tracks to the platform (y~6.4)
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: 0xc8c0b0 }));
+  bridge.position.set(39.4, 6.55, MZ);
+  grp.add(bridge);
+  for (let i = 0; i < 5; i++) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8, 1.6), colMat);
+    rail.position.set(36.4 + i * 1.6, 7.0, MZ);
+    grp.add(rail);
+  }
+  // M sign at street level facing the road (x=39 side... face west)
+  const cv = document.createElement('canvas'); cv.width = 96; cv.height = 96;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#d42b1e'; g.beginPath(); g.arc(48, 48, 46, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffffff'; g.font = 'bold 64px Tahoma'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('M', 48, 52);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide, transparent: true }));
+  sign.position.set(MX - 2.6, 3.1, MZ - 1.6);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.6, 6), colMat);
+  pole.position.set(MX - 2.6, 1.3, MZ - 1.6);
+  grp.add(sign, pole);
+  // street label
+  const cv2 = document.createElement('canvas'); cv2.width = 256; cv2.height = 40;
+  const g2 = cv2.getContext('2d');
+  g2.fillStyle = '#123a5c'; g2.fillRect(0, 0, 256, 40);
+  g2.fillStyle = '#cfe6ff'; g2.font = 'bold 24px Tahoma'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.fillText('محطة المترو 🚇', 128, 22);
+  const lbl = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 0.62), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2), side: THREE.DoubleSide }));
+  lbl.position.set(MX, 2.4, MZ - 1.85);
+  grp.add(lbl);
+  scene.add(grp);
+  // rush-hour commuters
+  const commuters = [];
+  for (let i = 0; i < 7; i++) {
+    const p = new THREE.Group();
+    const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.7, 6), new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.3, 0.5) }));
+    shirt.position.y = 0.55;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: [0xc89b6d, 0xa8763e, 0x8a5a2b][i % 3] }));
+    head.position.y = 1.08;
+    p.add(shirt, head);
+    p.userData = { off: i / 7, dir: i % 2 ? 1 : -1 };
+    p.visible = false;
+    scene.add(p);
+    commuters.push(p);
+  }
+  metroEntrance = { grp, commuters, t: 0, toastedSlot: -1, MX, MZ };
+}
+function updateMetroEntrance(dtReal) {
+  if (!metroEntrance) return;
+  const m = metroEntrance;
+  m.t += dtReal;
+  const h = state.hour;
+  const rush = (h >= 7 && h < 10) || (h >= 17 && h < 20);
+  const slot = rush ? (h < 12 ? 1 : 2) : 0;
+  if (rush && m.toastedSlot !== slot) {
+    m.toastedSlot = slot;
+    toast('🚇 ساعة الذروة على محطة المترو — الناس بتطلع وبتنزل!');
+  }
+  for (const p of m.commuters) {
+    p.visible = rush;
+    if (!rush) continue;
+    const u = p.userData;
+    // walk up the first flight and vanish at the top, loop
+    const cyc = (m.t * 0.12 * u.dir + u.off) % 1;
+    const k = cyc < 0 ? cyc + 1 : cyc;
+    const step = Math.min(k * 1.25, 1); // stairs portion
+    p.position.set(m.MX + 0.3, 0.2 + step * 3.3, m.MZ - 3.5 + step * 4.6);
+    p.visible = rush && k < 0.85;
+  }
+}
+initMetroEntrance();
+
+
 
 
 
@@ -6430,6 +6530,7 @@ function animate() {
   updateKiteFest(dtReal);
   updateBalloons(dtReal);
   updateFeluccaRace(dtReal);
+  updateMetroEntrance(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
