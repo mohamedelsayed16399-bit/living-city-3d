@@ -7852,6 +7852,108 @@ function updateZeppelin(dtReal) {
   f.navR.material.color.setHex(blink ? 0x115511 : 0x44ff66);
 }
 
+
+let oasis = null;
+function initOasis() {
+  if (oasis) return;
+  const OX = -168, OZ = 72;
+  const grp = new THREE.Group();
+  // pond: flattened blue disc with sandy rim
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(13, 14, 0.25, 20), new THREE.MeshLambertMaterial({ color: 0xc9b283 }));
+  rim.position.set(OX, 0.12, OZ);
+  rim.scale.set(1, 1, 0.72);
+  grp.add(rim);
+  const pondM = new THREE.MeshLambertMaterial({ color: 0x2e7ba8 });
+  const pond = new THREE.Mesh(new THREE.CylinderGeometry(10.5, 10.5, 0.3, 20), pondM);
+  pond.position.set(OX, 0.22, OZ);
+  pond.scale.set(1, 1, 0.7);
+  grp.add(pond);
+  // palm ring
+  const trunkM = new THREE.MeshLambertMaterial({ color: 0x8a6a42 });
+  const frondM = new THREE.MeshLambertMaterial({ color: 0x3e7d3a, side: THREE.DoubleSide });
+  for (let i = 0; i < 10; i++) {
+    const a = i * Math.PI * 2 / 10 + 0.3;
+    const px = OX + Math.cos(a) * 15;
+    const pz = OZ + Math.sin(a) * 11;
+    const h = 4.5 + (i % 3) * 0.8;
+    const palm = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, h, 6), trunkM);
+    trunk.position.y = h / 2;
+    trunk.rotation.z = Math.sin(i * 2.7) * 0.08;
+    palm.add(trunk);
+    for (let fN = 0; fN < 6; fN++) {
+      const frond = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.8), frondM);
+      frond.position.y = h;
+      frond.rotation.y = fN * Math.PI / 3;
+      frond.rotation.x = -0.5;
+      frond.translateY(0.2);
+      frond.translateX(1.0);
+      palm.add(frond);
+    }
+    palm.position.set(px, 0, pz);
+    grp.add(palm);
+  }
+  // 3 bedouin tents
+  const tentCols = [0x7a3b2e, 0x6b4a2f, 0x803a40];
+  for (let i = 0; i < 3; i++) {
+    const tent = new THREE.Mesh(new THREE.ConeGeometry(2.6, 2.6, 6), new THREE.MeshLambertMaterial({ color: tentCols[i] }));
+    tent.position.set(OX - 6 + i * 7, 1.3, OZ + 15);
+    grp.add(tent);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2, 4), trunkM);
+    pole.position.set(OX - 6 + i * 7, 3.1, OZ + 15);
+    grp.add(pole);
+  }
+  // campfire: stone ring + logs + flame
+  const fireG = new THREE.Group();
+  const stoneM = new THREE.MeshLambertMaterial({ color: 0x8d8d88 });
+  for (let i = 0; i < 7; i++) {
+    const st = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 5), stoneM);
+    const a = i * Math.PI * 2 / 7;
+    st.position.set(Math.cos(a) * 0.9, 0.15, Math.sin(a) * 0.9);
+    fireG.add(st);
+  }
+  const logM = new THREE.MeshLambertMaterial({ color: 0x5a3a22 });
+  for (let i = 0; i < 3; i++) {
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 5), logM);
+    log.rotation.z = Math.PI / 2;
+    log.rotation.y = i * Math.PI / 3;
+    log.position.y = 0.18;
+    fireG.add(log);
+  }
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.1, 7), new THREE.MeshBasicMaterial({ color: 0xff8c2a, transparent: true, opacity: 0, fog: false }));
+  flame.position.y = 0.8;
+  fireG.add(flame);
+  const flameIn = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 6), new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0, fog: false }));
+  flameIn.position.y = 0.75;
+  fireG.add(flameIn);
+  const fireLight = new THREE.PointLight(0xff9a3a, 0, 22);
+  fireLight.position.set(0, 1.5, 0);
+  fireG.add(fireLight);
+  fireG.position.set(OX + 2, 0.1, OZ + 19);
+  grp.add(fireG);
+  scene.add(grp);
+  oasis = { grp, flame, flameIn, fireLight, pondM, t: 0, toastedDay: -1 };
+}
+initOasis();
+
+function updateOasis(dtReal) {
+  if (!oasis) return;
+  const f = oasis;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F3D5} واحة في الصحرا غرب المدينة — نار المخيم بتولع بالليل!');
+  }
+  const night = state.hour >= 17 || state.hour < 6;
+  const flick = night ? (0.75 + Math.sin(f.t * 9) * 0.15 + Math.sin(f.t * 23) * 0.1) : 0;
+  f.flame.material.opacity = flick;
+  f.flameIn.material.opacity = flick * 0.9;
+  f.fireLight.intensity = flick * 1.6;
+  f.flame.scale.set(1, 0.9 + Math.sin(f.t * 11) * 0.15, 1);
+  // subtle pond shimmer
+  f.pondM.color.setHex(night ? 0x1d4a66 : 0x2e7ba8);
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -7947,6 +8049,7 @@ function animate() {
   updatePyramids(dtReal);
   updateLightShow(dtReal);
   updateZeppelin(dtReal);
+  updateOasis(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
