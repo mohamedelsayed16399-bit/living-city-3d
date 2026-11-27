@@ -10221,6 +10221,58 @@ function updateMurmuration(dtReal) {
   f.pts.geometry.attributes.position.needsUpdate = true;
 }
 
+
+// R122: night glow on the minarets of the player's own mosques, 18-5h
+const minaretGlows = new Map();
+function ensureMinaretGlow(key, mesh) {
+  let g = minaretGlows.get(key);
+  if (g && g.parent === mesh) return g;
+  const cap = mesh.children[mesh.children.length - 1];
+  const balcony = mesh.children[mesh.children.length - 2];
+  g = new THREE.Group();
+  const lampM = new THREE.MeshBasicMaterial({ color: 0xa8ffc8 });
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), lampM);
+  lamp.position.copy(cap.position);
+  lamp.position.y += 1.3;
+  g.add(lamp);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.09, 6, 14), new THREE.MeshBasicMaterial({ color: 0x7de8a8 }));
+  ring.position.copy(balcony.position);
+  ring.rotation.x = Math.PI / 2;
+  g.add(ring);
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshBasicMaterial({ color: 0x5fdc92, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.position.copy(lamp.position);
+  g.add(halo);
+  g.userData.lamp = lamp;
+  g.userData.halo = halo;
+  mesh.add(g);
+  minaretGlows.set(key, g);
+  return g;
+}
+let minaretToastDay = -1;
+function updateMinaretGlow(dtReal) {
+  const night = state.hour >= 18 || state.hour < 5;
+  // prune demolished
+  for (const [k, g] of minaretGlows) {
+    if (!state.plots.has(k)) { if (g.parent) g.parent.remove(g); minaretGlows.delete(k); }
+  }
+  if (night && minaretToastDay !== state.day && state.hour >= 18 && state.hour < 21) {
+    let n = 0;
+    for (const [, r] of state.plots) if (r.type === 'mosque') n++;
+    if (n > 0) { minaretToastDay = state.day; toast('\u{1F54C} مآذن المدينة اتنوّرت بالأخضر — ' + n + ' مسجد'); }
+  }
+  const t = performance.now() / 1000;
+  for (const [k, r] of state.plots) {
+    if (r.type !== 'mosque' || !r.mesh) continue;
+    const g = ensureMinaretGlow(k, r.mesh);
+    g.visible = night;
+    if (night) {
+      const pulse = 0.85 + Math.sin(t * 2.2 + r.mesh.position.x) * 0.15;
+      g.userData.lamp.scale.setScalar(pulse);
+      g.userData.halo.material.opacity = 0.18 + Math.sin(t * 2.2 + r.mesh.position.z) * 0.07;
+    }
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10343,6 +10395,7 @@ function animate() {
   updateWaterLanterns(dtReal);
   updateTourBus(dtReal);
   updateMurmuration(dtReal);
+  updateMinaretGlow(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
