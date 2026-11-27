@@ -9682,6 +9682,225 @@ function updateCamp(dtReal) {
   f.lantern.material.color.setHex(night ? 0xffd98a : 0x9a9284);
 }
 
+
+// R116: Qaitbay-style fort with rotating beacon on the west bank south, beam 18-6h
+let fort = null;
+function initFort() {
+  if (fort) return;
+  const grp = new THREE.Group();
+  const FX = -26, FZ = 126;
+  const stoneM = new THREE.MeshLambertMaterial({ color: 0xd6c49a });
+  const stoneD = new THREE.MeshLambertMaterial({ color: 0xbfae85 });
+  // rocky point + platform
+  const point = new THREE.Mesh(new THREE.CylinderGeometry(8.5, 9.5, 0.5, 20), new THREE.MeshLambertMaterial({ color: 0xc9b98f }));
+  point.position.set(FX, 0.25, FZ);
+  grp.add(point);
+  const plat = new THREE.Mesh(new THREE.BoxGeometry(8, 1.0, 8), stoneD);
+  plat.position.set(FX, 0.9, FZ);
+  grp.add(plat);
+  // level 1 with crenellations
+  const l1 = new THREE.Mesh(new THREE.BoxGeometry(6, 4.2, 6), stoneM);
+  l1.position.set(FX, 3.5, FZ);
+  grp.add(l1);
+  for (let i = 0; i < 4; i++) {
+    for (let j = -2; j <= 2; j++) {
+      const cx = FX + (i < 2 ? j * 1.2 : (i === 2 ? -3 : 3));
+      const cz = FZ + (i < 2 ? (i === 0 ? -3 : 3) : j * 1.2);
+      const cr = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), stoneD);
+      cr.position.set(cx, 5.9, cz);
+      grp.add(cr);
+    }
+  }
+  // level 2
+  const l2 = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.0, 4.2), stoneD);
+  l2.position.set(FX, 7.1, FZ);
+  grp.add(l2);
+  // octagonal beacon tower + cap
+  const oct = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.0, 2.6, 8), stoneM);
+  oct.position.set(FX, 9.9, FZ);
+  grp.add(oct);
+  const lampRoom = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.3, 8), new THREE.MeshBasicMaterial({ color: 0x8a8474 }));
+  lampRoom.position.set(FX, 11.8, FZ);
+  grp.add(lampRoom);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.2, 8), new THREE.MeshLambertMaterial({ color: 0x8e3b2f }));
+  cap.position.set(FX, 13.0, FZ);
+  grp.add(cap);
+  // flag
+  const fpole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 5), stoneD);
+  fpole.position.set(FX, 14.4, FZ);
+  grp.add(fpole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.8), new THREE.MeshLambertMaterial({ color: 0xc0392b, side: THREE.DoubleSide }));
+  flag.position.set(FX + 0.72, 15.1, FZ);
+  grp.add(flag);
+  // door + slit windows
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.0), new THREE.MeshLambertMaterial({ color: 0x2e2419 }));
+  door.position.set(FX, 2.4, FZ + 3.02);
+  grp.add(door);
+  for (const dy of [3.4, 4.6]) {
+    const slit = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.9), new THREE.MeshLambertMaterial({ color: 0x2e2419 }));
+    slit.position.set(FX - 1.2, dy, FZ + 3.02);
+    grp.add(slit);
+    const slit2 = slit.clone();
+    slit2.position.set(FX + 1.2, dy, FZ + 3.02);
+    grp.add(slit2);
+  }
+  // rotating beacon: light + sweeping beam cone
+  const beacon = new THREE.Group();
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
+  beacon.add(bulb);
+  const beamM = new THREE.MeshBasicMaterial({ color: 0xfff0a8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(3.2, 26, 12, 1, true), beamM);
+  beam.rotation.z = Math.PI / 2;
+  beam.position.x = 13.2;
+  beacon.add(beam);
+  const beam2 = beam.clone();
+  beam2.rotation.z = -Math.PI / 2;
+  beam2.position.x = -13.2;
+  beacon.add(beam2);
+  beacon.position.set(FX, 11.8, FZ);
+  grp.add(beacon);
+  const glow = new THREE.PointLight(0xffe9a0, 0, 30);
+  glow.position.set(FX, 11.8, FZ);
+  grp.add(glow);
+  // two palms
+  for (const [px, pz] of [[FX - 6.5, FZ + 5], [FX + 6, FZ - 5.5]]) {
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 3.6, 6), new THREE.MeshLambertMaterial({ color: 0x8a6a44 }));
+    tr.position.set(px, 2.3, pz);
+    grp.add(tr);
+    for (let k = 0; k < 6; k++) {
+      const lf = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.5), new THREE.MeshLambertMaterial({ color: 0x3f8c46 }));
+      lf.position.set(px + Math.cos(k * Math.PI / 3) * 0.9, 4.2, pz + Math.sin(k * Math.PI / 3) * 0.9);
+      lf.rotation.y = -k * Math.PI / 3;
+      lf.rotation.z = 0.35;
+      grp.add(lf);
+    }
+  }
+  scene.add(grp);
+  fort = { grp, beacon, glow, flag, lampRoom, t: 0, toastedDay: -1 };
+}
+initFort();
+
+function updateFort(dtReal) {
+  if (!fort) return;
+  const f = fort;
+  f.t += dtReal;
+  const night = state.hour >= 18 || state.hour < 6;
+  if (night && f.toastedDay !== state.day && state.hour >= 18 && state.hour < 23) {
+    f.toastedDay = state.day;
+    toast('\u{1F3F0} منارة القلعة شغالة — الضوء بيلف على النيل');
+  }
+  f.beacon.rotation.y = f.t * 0.7;
+  f.beacon.visible = night;
+  f.glow.intensity = night ? 1.3 + Math.sin(f.t * 3) * 0.2 : 0;
+  f.lampRoom.material.color.setHex(night ? 0xffe9a0 : 0x8a8474);
+  f.flag.rotation.y = Math.sin(f.t * 2.4) * 0.3;
+}
+
+
+// R117: Nubian village in the south-west desert — colorful domed houses, bunting, lanterns
+let nubia = null;
+function initNubia() {
+  if (nubia) return;
+  const grp = new THREE.Group();
+  const NX = -152, NZ = 126;
+  // sandy courtyard
+  const yard = new THREE.Mesh(new THREE.CylinderGeometry(13, 14, 0.18, 26), new THREE.MeshLambertMaterial({ color: 0xe3cd96 }));
+  yard.position.set(NX, 0.09, NZ);
+  grp.add(yard);
+  // 6 houses along a curve
+  const cols = [0x2fb6c9, 0xe8763a, 0xe85a90, 0x7fc94a, 0xf2c93a, 0x5a8fe8];
+  const domeC = [0xf3ead2, 0x2fb6c9, 0xf2c93a, 0xe8763a, 0xe85a90, 0xf3ead2];
+  for (let i = 0; i < 6; i++) {
+    const a = -0.5 + i * 0.62;
+    const hx = NX + Math.cos(a) * 9.2, hz = NZ + Math.sin(a) * 9.2;
+    const h = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.3, 3.2), new THREE.MeshLambertMaterial({ color: cols[i] }));
+    body.position.y = 1.15;
+    h.add(body);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.9, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: domeC[i] }));
+    dome.position.y = 2.3;
+    h.add(dome);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.5), new THREE.MeshLambertMaterial({ color: 0x4a3220 }));
+    door.position.set(0, 0.85, 1.62);
+    h.add(door);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), new THREE.MeshLambertMaterial({ color: 0xfff2c8 }));
+    win.position.set(-1.0, 1.5, 1.62);
+    h.add(win);
+    const win2 = win.clone();
+    win2.position.set(1.0, 1.5, 1.62);
+    h.add(win2);
+    h.position.set(hx, 0.18, hz);
+    h.rotation.y = -a + Math.PI;
+    grp.add(h);
+  }
+  // bunting between two poles across the yard
+  const poleM = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
+  for (const [px, pz] of [[NX - 5, NZ - 1], [NX + 5, NZ + 1]]) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 4.2, 6), poleM);
+    p.position.set(px, 2.1, pz);
+    grp.add(p);
+  }
+  const buntCols = [0xe2544a, 0xe8b93a, 0x3aa860, 0x3a78c2, 0xe85a90];
+  const flags = [];
+  for (let i = 0; i < 9; i++) {
+    const t = (i + 0.5) / 9;
+    const fx = NX - 5 + t * 10, fz = NZ - 1 + t * 2;
+    const sag = Math.sin(t * Math.PI) * 0.55;
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), new THREE.MeshLambertMaterial({ color: buntCols[i % 5], side: THREE.DoubleSide }));
+    fl.position.set(fx, 3.9 - sag, fz);
+    fl.rotation.z = Math.PI / 4;
+    grp.add(fl);
+    flags.push(fl);
+  }
+  // lantern balls on the poles
+  const lantM = new THREE.MeshBasicMaterial({ color: 0xffd98a });
+  const lants = [];
+  for (const [px, pz] of [[NX - 5, NZ - 1], [NX + 5, NZ + 1]]) {
+    const ln = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), lantM.clone());
+    ln.position.set(px, 4.35, pz);
+    grp.add(ln);
+    lants.push(ln);
+  }
+  const glow = new THREE.PointLight(0xffc978, 0, 18);
+  glow.position.set(NX, 3.5, NZ);
+  grp.add(glow);
+  // two kids with a ball
+  const skinM = new THREE.MeshLambertMaterial({ color: 0xb9825c });
+  for (let i = 0; i < 2; i++) {
+    const k = new THREE.Group();
+    const kb = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.55, 0.26), new THREE.MeshLambertMaterial({ color: i ? 0xe8b93a : 0x3a78c2 }));
+    kb.position.y = 0.55;
+    const kh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), skinM);
+    kh.position.y = 0.98;
+    k.add(kb, kh);
+    k.position.set(NX - 1.5 + i * 3, 0.18, NZ - 3.5);
+    grp.add(k);
+  }
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshLambertMaterial({ color: 0xf3ead2 }));
+  ball.position.set(NX, 0.4, NZ - 3.2);
+  grp.add(ball);
+  scene.add(grp);
+  nubia = { grp, flags, lants, glow, ball, t: 0, toastedDay: -1 };
+}
+initNubia();
+
+function updateNubia(dtReal) {
+  if (!nubia) return;
+  const f = nubia;
+  f.t += dtReal;
+  const night = state.hour >= 18 || state.hour < 6;
+  if (f.toastedDay !== state.day && state.hour >= 9 && state.hour < 18) {
+    f.toastedDay = state.day;
+    toast('\u{1F3D8}\u{FE0F} القرية النوبية متلونة تحت الشمس — البيوت بقباب والأعلام مرفوعة');
+  }
+  for (let i = 0; i < f.flags.length; i++) {
+    f.flags[i].rotation.y = Math.sin(f.t * 2.6 + i * 0.7) * 0.35;
+  }
+  f.glow.intensity = night ? 1.4 : 0;
+  for (const ln of f.lants) ln.material.color.setHex(night ? 0xffd98a : 0x9a9284);
+  f.ball.position.y = 0.4 + Math.abs(Math.sin(f.t * 2.2)) * 0.35;
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -9798,6 +10017,8 @@ function animate() {
   updateLibrary(dtReal);
   updateSaqiya(dtReal);
   updateCamp(dtReal);
+  updateFort(dtReal);
+  updateNubia(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
