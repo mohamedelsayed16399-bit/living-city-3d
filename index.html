@@ -7666,6 +7666,86 @@ function updatePyramids(dtReal) {
   }
 }
 
+
+let lightShow = null;
+function initLightShow() {
+  if (lightShow) return;
+  const grp = new THREE.Group();
+  const cols = [0x4fc3ff, 0xffd23e, 0xff4fd8];
+  const fixtures = [[-141, -8], [-146, 28], [-149, -44]];
+  const beams = [];
+  for (let i = 0; i < 3; i++) {
+    // ground spotlight fixture
+    const fix = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 0.6, 10), new THREE.MeshLambertMaterial({ color: 0x333844 }));
+    base.position.y = 0.3;
+    fix.add(base);
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.7, 10), new THREE.MeshLambertMaterial({ color: 0x222630 }));
+    head.position.y = 0.9;
+    fix.add(head);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.42, 10), new THREE.MeshBasicMaterial({ color: cols[i], fog: false }));
+    lens.position.set(0, 1.26, 0);
+    lens.rotation.x = -Math.PI / 2;
+    fix.add(lens);
+    fix.position.set(fixtures[i][0], 0, fixtures[i][1]);
+    fix.visible = false;
+    grp.add(fix);
+    // beam: open cone from fixture toward pyramid face
+    const geo = new THREE.ConeGeometry(5.5, 40, 12, 1, true);
+    geo.translate(0, 20, 0); // base at origin, tip at +40
+    const mat = new THREE.MeshBasicMaterial({ color: cols[i], transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const beam = new THREE.Mesh(geo, mat);
+    grp.add(beam);
+    beams.push({ beam, fix, src: new THREE.Vector3(fixtures[i][0], 1.2, fixtures[i][1]) });
+  }
+  scene.add(grp);
+  lightShow = { grp, beams, t: 0, toastedDay: -1 };
+}
+initLightShow();
+
+function updateLightShow(dtReal) {
+  if (!lightShow) return;
+  const f = lightShow;
+  const on = state.hour >= 21 || state.hour < 1;
+  for (const b of f.beams) {
+    b.fix.visible = on;
+    if (!on) b.beam.material.opacity = 0;
+  }
+  if (!on) return;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F4A1} عرض الصوت والضوء بدأ على الأهرامات!');
+  }
+  const targets = [
+    new THREE.Vector3(-160, 16, -25),
+    new THREE.Vector3(-178, 14, 14),
+    new THREE.Vector3(-150, 8, -52)
+  ];
+  for (let i = 0; i < 3; i++) {
+    const b = f.beams[i];
+    const tgt = targets[i].clone();
+    tgt.x += Math.sin(f.t * 0.5 + i * 2.1) * 7;
+    tgt.y += Math.cos(f.t * 0.42 + i * 1.3) * 4;
+    tgt.z += Math.sin(f.t * 0.6 + i * 2.1) * 10;
+    const dir = tgt.clone().sub(b.src);
+    const len = dir.length();
+    b.beam.position.copy(b.src);
+    b.beam.scale.set(1, len / 40, 1);
+    b.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    b.beam.material.opacity = 0.30 + Math.sin(f.t * 2 + i * 2.4) * 0.07;
+  }
+  // colored pulse on the pyramid faces
+  if (typeof pyramids !== 'undefined' && pyramids) {
+    const pulse = Math.floor(f.t / 4) % 3;
+    const ecols = [0x0a2030, 0x2a2004, 0x2a0822];
+    for (let i = 0; i < pyramids.pyr.length; i++) {
+      const m = pyramids.pyr[i].material;
+      m.emissive = m.emissive || new THREE.Color(0);
+      m.emissive.setHex(ecols[(pulse + i) % 3]);
+    }
+  }
+}
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -7759,6 +7839,7 @@ function animate() {
   updateSakka(dtReal);
   updateCairoEye(dtReal);
   updatePyramids(dtReal);
+  updateLightShow(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
