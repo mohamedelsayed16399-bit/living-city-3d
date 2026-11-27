@@ -8845,6 +8845,98 @@ function updateFooty(dtReal) {
   }
 }
 
+// R107: mizmar band parading the corniche in the evening
+let band = null;
+function initBand() {
+  if (band) return;
+  const grp = new THREE.Group();
+  const skinM = new THREE.MeshLambertMaterial({ color: 0xc98d5f });
+  const galabeyaCols = [0xf0e6c8, 0x3a78c2, 0xe8b93a, 0x4aa860];
+  const members = [];
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.Group();
+    const cloth = new THREE.MeshLambertMaterial({ color: galabeyaCols[i] });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.95, 0.4), cloth);
+    body.position.y = 0.85;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), skinM);
+    head.position.y = 1.55;
+    g.add(head);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.22, 8), new THREE.MeshLambertMaterial({ color: 0xc0392b }));
+    cap.position.y = 1.72;
+    g.add(cap);
+    let instrument;
+    if (i === 0) {
+      // mizmar: long cone held up to the face
+      instrument = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.85, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a2a }));
+      instrument.position.set(0, 1.5, 0.45);
+      instrument.rotation.x = Math.PI / 2 - 0.25;
+    } else {
+      // tabla drum at the waist
+      instrument = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.42, 10), new THREE.MeshLambertMaterial({ color: 0xb87333 }));
+      instrument.position.set(0.28, 0.95, 0.25);
+    }
+    g.add(instrument);
+    const arms = [];
+    for (const sx of [-0.34, 0.34]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(sx, 1.25, 0);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.55, 0.13), cloth);
+      arm.position.y = -0.24;
+      pivot.add(arm);
+      g.add(pivot);
+      arms.push(pivot);
+    }
+    const legs = [];
+    for (const sx of [-0.14, 0.14]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.15), new THREE.MeshLambertMaterial({ color: 0x33405a }));
+      leg.position.set(sx, 0.25, 0);
+      g.add(leg);
+      legs.push(leg);
+    }
+    grp.add(g);
+    members.push({ g, arms, legs, drum: i > 0, ph: i * 1.4 });
+  }
+  grp.visible = false;
+  scene.add(grp);
+  band = { grp, members, z: -48, dir: 1, t: 0, toastedDay: -1 };
+}
+initBand();
+
+function updateBand(dtReal) {
+  if (!band) return;
+  const f = band;
+  const on = state.hour >= 17 && state.hour < 23;
+  f.grp.visible = on;
+  if (!on) return;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F941} فرقة المزمار بتعدي على الكورنيش — اسمع الطبلة!');
+  }
+  f.z += f.dir * 0.8 * dtReal;
+  if (f.z > 48) f.dir = -1;
+  if (f.z < -48) f.dir = 1;
+  for (let i = 0; i < f.members.length; i++) {
+    const m = f.members[i];
+    const mz = f.z - f.dir * i * 1.4;
+    const mx = -5.0 + Math.sin(f.t * 0.8 + m.ph) * 0.35;
+    m.g.position.set(mx, Math.abs(Math.sin(f.t * 4 + m.ph)) * 0.07, mz);
+    m.g.rotation.y = f.dir > 0 ? 0 : Math.PI;
+    m.legs[0].rotation.x = Math.sin(f.t * 5 + m.ph) * 0.4;
+    m.legs[1].rotation.x = -Math.sin(f.t * 5 + m.ph) * 0.4;
+    if (m.drum) {
+      // drumming arms
+      m.arms[0].rotation.x = -0.7 + Math.max(0, Math.sin(f.t * 8 + m.ph)) * 0.5;
+      m.arms[1].rotation.x = -0.7 + Math.max(0, Math.sin(f.t * 8 + m.ph + Math.PI / 2)) * 0.5;
+    } else {
+      // mizmar arms hold the instrument up
+      m.arms[0].rotation.x = -1.5;
+      m.arms[1].rotation.x = -1.5;
+    }
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -8952,6 +9044,7 @@ function animate() {
   updateDucks(dtReal);
   updateLaundry(dtReal);
   updateFooty(dtReal);
+  updateBand(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
