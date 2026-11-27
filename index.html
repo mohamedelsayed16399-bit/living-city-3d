@@ -9429,6 +9429,125 @@ function updateLibrary(dtReal) {
   }
 }
 
+
+// R114: saqiya (waterwheel) with buffalo on the west bank, 5-19h
+let saqiya = null;
+function initSaqiya() {
+  if (saqiya) return;
+  const grp = new THREE.Group();
+  const SX = -21.5, SZ = -60;
+  // mud base + water channel from the river
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.5, 0.3, 24), new THREE.MeshLambertMaterial({ color: 0xb59a6e }));
+  base.position.set(SX, 0.15, SZ);
+  grp.add(base);
+  const chan = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.16, 1.6), new THREE.MeshPhongMaterial({ color: 0x2e9ad8, transparent: true, opacity: 0.85, shininess: 110 }));
+  chan.position.set(SX + 4.4, 0.28, SZ);
+  grp.add(chan);
+  // wooden frame
+  const woodM = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
+  for (const dz of [-1.1, 1.1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 3.4, 6), woodM);
+    post.position.set(SX, 1.7, SZ + dz);
+    grp.add(post);
+  }
+  // the wheel: rim + spokes + clay pots
+  const wheel = new THREE.Group();
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.14, 8, 28), woodM);
+  wheel.add(rim);
+  for (let i = 0; i < 8; i++) {
+    const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 5.0, 5), woodM);
+    sp.rotation.z = i * Math.PI / 8;
+    wheel.add(sp);
+  }
+  const potM = new THREE.MeshLambertMaterial({ color: 0xa8623a });
+  for (let i = 0; i < 10; i++) {
+    const a = i * Math.PI * 2 / 10;
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.4, 7), potM);
+    pot.position.set(Math.cos(a) * 2.6, Math.sin(a) * 2.6, 0);
+    wheel.add(pot);
+  }
+  wheel.position.set(SX, 3.1, SZ);
+  grp.add(wheel);
+  // horizontal sweep pole the buffalo pushes
+  const sweep = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 3.4, 6), woodM);
+  sweep.rotation.z = Math.PI / 2;
+  grp.add(sweep);
+  sweep.position.set(SX, 1.0, SZ + 3.4);
+  // buffalo
+  const buf = new THREE.Group();
+  const hideM = new THREE.MeshLambertMaterial({ color: 0x4a4038 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.8), hideM);
+  body.position.y = 1.05;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.55, 0.5), hideM);
+  head.position.set(1.05, 1.15, 0);
+  const hornM = new THREE.MeshLambertMaterial({ color: 0xd8cfb8 });
+  for (const dz of [-0.3, 0.3]) {
+    const horn = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 5, 10, Math.PI), hornM);
+    horn.position.set(1.0, 1.5, dz);
+    horn.rotation.y = dz > 0 ? 0.5 : -0.5;
+    buf.add(horn);
+  }
+  for (const dx of [-0.6, 0.6]) for (const dz of [-0.25, 0.25]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.75, 5), hideM);
+    leg.position.set(dx, 0.38, dz);
+    buf.add(leg);
+  }
+  buf.add(body, head);
+  grp.add(buf);
+  // farmer with a stick
+  const farmer = new THREE.Group();
+  const fbody = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.85, 0.3), new THREE.MeshLambertMaterial({ color: 0x3f6ea8 }));
+  fbody.position.y = 1.05;
+  const fhead = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc8956c }));
+  fhead.position.y = 1.68;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.14, 8), new THREE.MeshLambertMaterial({ color: 0xf3ead2 }));
+  cap.position.y = 1.82;
+  farmer.add(fbody, fhead, cap);
+  farmer.position.set(SX + 2.2, 0.3, SZ + 4.6);
+  grp.add(farmer);
+  // splash droplets at the pour point
+  const dropM = new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.9 });
+  const drops = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 5), dropM);
+    grp.add(d);
+    drops.push(d);
+  }
+  scene.add(grp);
+  saqiya = { grp, wheel, buf, sweep, drops, t: 0, toastedDay: -1 };
+}
+initSaqiya();
+
+function updateSaqiya(dtReal) {
+  if (!saqiya) return;
+  const f = saqiya;
+  const on = state.hour >= 5 && state.hour < 19;
+  if (f.toastedDay !== state.day && on && state.hour >= 6) {
+    f.toastedDay = state.day;
+    toast('\u{1F402} الساقية شغالة على البحر — الجاموسة بتلف والمية طالعة');
+  }
+  const spd = on ? 0.55 : 0;
+  f.t += dtReal * spd;
+  f.wheel.rotation.z = -f.t;
+  // buffalo walks its circle, nose leading
+  const ang = f.t * 0.42;
+  const SX = -21.5, SZ = -60;
+  const bx = SX + Math.cos(ang) * 3.4, bz = SZ + Math.sin(ang) * 3.4;
+  f.buf.position.set(bx, 0.3, bz);
+  f.buf.rotation.y = -ang - Math.PI / 2 + Math.PI;
+  f.sweep.position.set(SX + Math.cos(ang) * 1.7, 1.0, SZ + Math.sin(ang) * 1.7);
+  f.sweep.rotation.y = -ang;
+  // droplets pouring near the top of the wheel into the channel
+  for (let i = 0; i < f.drops.length; i++) {
+    const ph = (f.t * 1.4 + i * 0.53) % 1.6;
+    const d = f.drops[i];
+    if (on && ph < 0.8) {
+      d.visible = true;
+      d.position.set(SX + 1.2 + ph * 3.4, 5.4 - ph * ph * 8.5, SZ + (i % 3 - 1) * 0.3);
+    } else d.visible = false;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -9543,6 +9662,7 @@ function animate() {
   updateNightMarket(dtReal);
   updateRegatta(dtReal);
   updateLibrary(dtReal);
+  updateSaqiya(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
