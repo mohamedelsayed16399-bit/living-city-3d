@@ -10840,6 +10840,60 @@ function updateGazelles(dtReal) {
   }
 }
 
+
+// R132: white egrets flying low along the Nile in a V line, 6-9h and 16-18h
+const egrets = (() => {
+  const list = [];
+  const whiteM = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const beakM = new THREE.MeshLambertMaterial({ color: 0xf0b030 });
+  const legM = new THREE.MeshLambertMaterial({ color: 0x2b2b2b });
+  for (let i = 0; i < 11; i++) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 1.1), whiteM);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.7), whiteM);
+    neck.position.set(0, 0.1, 0.8);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.22), whiteM);
+    head.position.set(0, 0.12, 1.2);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.4, 5), beakM);
+    beak.rotation.x = Math.PI / 2; beak.position.set(0, 0.1, 1.5);
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.9), legM);
+    legs.position.set(0, -0.05, -0.9);
+    const wl = new THREE.Group(); wl.position.set(0.15, 0.1, 0);
+    const wlm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.6), whiteM); wlm.position.x = 0.7; wl.add(wlm);
+    const wr = new THREE.Group(); wr.position.set(-0.15, 0.1, 0);
+    const wrm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.6), whiteM); wrm.position.x = -0.7; wr.add(wrm);
+    g.add(body, neck, head, beak, legs, wl, wr);
+    g.scale.setScalar(1.6);
+    g.visible = false;
+    scene.add(g);
+    const k = i === 0 ? 0 : Math.ceil(i / 2);
+    const side = i === 0 ? 0 : (i % 2 ? 1 : -1);
+    list.push({ g, wl, wr, back: k * 5, lat: side * k * 2.4, ph: i * 0.9 });
+  }
+  return { list, z: -110, dir: 1, t: 0, toastedDay: -1 };
+})();
+function updateEgrets(dtReal) {
+  const e = egrets;
+  const on = (state.hour >= 6 && state.hour < 9) || (state.hour >= 16 && state.hour < 18);
+  for (const b of e.list) b.g.visible = on;
+  if (!on) return;
+  if (e.toastedDay !== state.day) {
+    e.toastedDay = state.day;
+    toast('\u{1FAB6} طيور أبو قردان بيعدّوا فوق النيل في تشكيل V');
+  }
+  e.t += dtReal;
+  e.z += e.dir * 9 * dtReal;
+  if (e.z > 130) { e.z = 130; e.dir = -1; }
+  if (e.z < -130) { e.z = -130; e.dir = 1; }
+  for (const b of e.list) {
+    const flap = Math.sin(e.t * 9 + b.ph) * 0.7;
+    b.wl.rotation.z = flap; b.wr.rotation.z = -flap;
+    const zz = e.z - e.dir * b.back;
+    b.g.position.set(-13 + b.lat + Math.sin(e.t * 0.5 + b.ph) * 0.4, 9 + Math.sin(e.t * 1.5 + b.ph) * 0.4, zz);
+    b.g.rotation.y = e.dir > 0 ? 0 : Math.PI;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -10971,6 +11025,7 @@ function animate() {
   updateDustDevil(dtReal);
   updateComet(dtReal);
   updateGazelles(dtReal);
+  updateEgrets(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
