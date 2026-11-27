@@ -8582,6 +8582,75 @@ function updateCoptic(dtReal) {
   }
 }
 
+// R103: morning aerobics group in Nakheel park, 6-10am
+let aerobics = null;
+function initAerobics() {
+  if (aerobics) return;
+  const grp = new THREE.Group();
+  const NX = 128, NZ = 0;
+  const skinM = new THREE.MeshLambertMaterial({ color: 0xc98d5f });
+  const clothCols = [0xe2544a, 0x3a78c2, 0xe8b93a, 0x4aa860, 0xb45ac2, 0xe2803a, 0x3ab8c2, 0xd84f8a];
+  const folks = [];
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    const g = new THREE.Group();
+    const cloth = new THREE.MeshLambertMaterial({ color: clothCols[i] });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.32), cloth);
+    body.position.y = 0.95;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 8, 6), skinM);
+    head.position.y = 1.55;
+    g.add(head);
+    const arms = [];
+    for (const sx of [-0.34, 0.34]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(sx, 1.28, 0);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.6, 0.13), cloth);
+      arm.position.y = -0.28;
+      pivot.add(arm);
+      g.add(pivot);
+      arms.push(pivot);
+    }
+    const legs = [];
+    for (const sx of [-0.15, 0.15]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.16), new THREE.MeshLambertMaterial({ color: 0x33405a }));
+      leg.position.set(sx, 0.3, 0);
+      g.add(leg);
+      legs.push(leg);
+    }
+    g.position.set(NX + Math.cos(a) * 3.6, 0, NZ + Math.sin(a) * 3.6);
+    g.rotation.y = -a - Math.PI / 2;
+    grp.add(g);
+    folks.push({ g, arms, legs, ph: (i % 2) * Math.PI });
+  }
+  grp.visible = false;
+  scene.add(grp);
+  aerobics = { grp, folks, t: 0, toastedDay: -1 };
+}
+initAerobics();
+
+function updateAerobics(dtReal) {
+  if (!aerobics) return;
+  const f = aerobics;
+  const on = state.hour >= 6 && state.hour < 10;
+  f.grp.visible = on;
+  if (!on) return;
+  f.t += dtReal;
+  if (f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast('\u{1F938} تمرينات الصبح في جنينة حي النخيل — يلا نتحرك!');
+  }
+  const w = f.t * 2.4;
+  for (const p of f.folks) {
+    const s = Math.sin(w + p.ph);
+    p.arms[0].rotation.z = 0.25 + (s * 0.5 + 0.5) * 2.4;
+    p.arms[1].rotation.z = -0.25 - (s * 0.5 + 0.5) * 2.4;
+    p.g.position.y = Math.abs(Math.sin(w * 0.5 + p.ph)) * 0.14;
+    p.legs[0].rotation.x = Math.sin(w + p.ph) * 0.25;
+    p.legs[1].rotation.x = -Math.sin(w + p.ph) * 0.25;
+  }
+}
+
 window.__city = { state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
@@ -8685,6 +8754,7 @@ function animate() {
   updateMeteors(dtReal);
   updateSafari(dtReal);
   updateCoptic(dtReal);
+  updateAerobics(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
