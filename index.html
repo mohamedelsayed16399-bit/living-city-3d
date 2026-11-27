@@ -6643,6 +6643,82 @@ function updateParagliders(dtReal) {
 }
 initParagliders();
 
+// R82: Sufi whirling show (درويشة المولد) on the riverfront promenade 20-23h
+let sufiShow = null;
+function initSufiShow() {
+  if (sufiShow) return;
+  const SX = -9, SZ = -40;
+  const grp = new THREE.Group();
+  // stage: round carpet platform with pattern rings
+  const stage = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.3, 0.3, 18), new THREE.MeshLambertMaterial({ color: 0x8a2f3f }));
+  stage.position.set(SX, 0.15, SZ);
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 0.32, 18), new THREE.MeshLambertMaterial({ color: 0xd9a13b }));
+  ring.position.set(SX, 0.16, SZ);
+  const inner = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.34, 14), new THREE.MeshLambertMaterial({ color: 0x2f6f6a }));
+  inner.position.set(SX, 0.17, SZ);
+  grp.add(stage, ring, inner);
+  // two lantern posts with warm bulbs
+  const postG = new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6);
+  const postM = new THREE.MeshLambertMaterial({ color: 0x4a4038 });
+  const bulbs = [];
+  for (const dx of [-3.6, 3.6]) {
+    const p = new THREE.Mesh(postG, postM);
+    p.position.set(SX + dx, 1.6, SZ);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffd27a }));
+    bulb.position.set(SX + dx, 3.3, SZ);
+    grp.add(p, bulb);
+    bulbs.push(bulb);
+  }
+  // 4 whirling dancers: flared cone skirt + body + head + tall hat
+  const skirtCols = [0xe84545, 0x2fa89a, 0xe8a02f, 0x8a4fd0];
+  const dancers = [];
+  for (let i = 0; i < 4; i++) {
+    const d = new THREE.Group();
+    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 12, 1, true), new THREE.MeshLambertMaterial({ color: skirtCols[i], side: THREE.DoubleSide }));
+    skirt.position.y = 0.62;
+    const stripe = new THREE.Mesh(new THREE.ConeGeometry(0.76, 0.3, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe9a0, side: THREE.DoubleSide }));
+    stripe.position.y = 0.28;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.55, 8), new THREE.MeshLambertMaterial({ color: 0xf2ede0 }));
+    body.position.y = 1.35;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshLambertMaterial({ color: 0xc89b6d }));
+    head.position.y = 1.75;
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.42, 8), new THREE.MeshLambertMaterial({ color: 0xa4643a }));
+    hat.position.y = 2.05;
+    // raised arms
+    const armG = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 5);
+    const armM = new THREE.MeshLambertMaterial({ color: 0xf2ede0 });
+    const armL = new THREE.Mesh(armG, armM); armL.position.set(-0.32, 1.55, 0); armL.rotation.z = 1.1;
+    const armR = new THREE.Mesh(armG, armM); armR.position.set(0.32, 1.55, 0); armR.rotation.z = -1.1;
+    d.add(skirt, stripe, body, head, hat, armL, armR);
+    d.visible = false;
+    scene.add(d);
+    dancers.push({ d, ph: i * Math.PI / 2, spin: 5.2 + (i % 2) * 0.9 });
+  }
+  scene.add(grp);
+  sufiShow = { grp, dancers, bulbs, SX, SZ, t: 0, toastedDay: -1 };
+}
+function updateSufiShow(dtReal) {
+  if (!sufiShow) return;
+  const f = sufiShow;
+  f.t += dtReal;
+  const h = state.hour;
+  const on = h >= 20 && h < 23;
+  if (on && f.toastedDay !== state.day) {
+    f.toastedDay = state.day;
+    toast("🌀 درويشة المولد بتلف على الكورنيش — تعالى شوف!");
+  }
+  for (const b of f.bulbs) b.visible = on;
+  for (const w of f.dancers) {
+    w.d.visible = on;
+    if (!on) continue;
+    const a = f.t * 0.35 + w.ph;
+    w.d.position.set(f.SX + Math.cos(a) * 1.7, 0.3 + Math.abs(Math.sin(f.t * 1.6 + w.ph)) * 0.06, f.SZ + Math.sin(a) * 1.7);
+    w.d.rotation.y += w.spin * dtReal;
+  }
+}
+initSufiShow();
+
+
 
 
 
@@ -6892,6 +6968,7 @@ function animate() {
   updatePigeonTowers(dtReal);
   updateRiverFun(dtReal);
   updateParagliders(dtReal);
+  updateSufiShow(dtReal);
   updateStadium();
   updateBalloonFestival(dtReal);
   updateNileIsland(dtReal);
