@@ -12081,7 +12081,81 @@ updateDrive = function (dtReal) {
   drive.panel.innerHTML = html;
 };
 COUNCIL_QUESTS.push({ id: 'q18', t: 'خلّص مسارين زبالة 🚛', r: 600, v: () => garb.stats.routes, g: 2 });
-window.__city = { garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R143: GARBAGE TRUCK ROUTE - collect 5 bins in a chain before time runs out; clean city = happiness
+const busd = (() => {
+  const bins = [];
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.Group(); g.visible = false; scene.add(g);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 1.1, 8), new THREE.MeshLambertMaterial({ color: 0x1565c0 })); b.position.y = 0.55;
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x0d47a1 })); l.position.y = 1.15;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 16, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x42a5f5, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 8;
+    g.add(b, l, beam); bins.push({ g, x: 0, z: 0, done: false });
+  }
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'busdBtn'; btn.title = 'وضع السواق: خط أتوبيس بـ5 محطات'; btn.textContent = '🚌';
+  document.getElementById('sidebtns').appendChild(btn);
+  const css = document.createElement('style'); css.textContent = '#busdBtn.on{background:#2e7d32;color:#fff}'; document.head.appendChild(css);
+  return { bins, btn, on: false, ph: 'idle', time: 0, wait: 0, got: 0, stats: { routes: 0, bins: 0, earned: 0, failed: 0 } };
+})();
+function busdColor(on) {
+  const body = drive.car.children[0].material, cabin = drive.car.children[2].material;
+  if (!rescue.orig) rescue.orig = [body.color.getHex(), cabin.color.getHex()];
+  body.color.setHex(on ? 0x1565c0 : rescue.orig[0]); cabin.color.setHex(on ? 0xbbdefb : rescue.orig[1]);
+}
+function busdNew() {
+  let px = drive.x, pz = drive.z, tot = 0;
+  busd.bins.forEach(b => { const p = driveRandomSpot(30, 90, px, pz); b.x = p.x; b.z = p.z; b.done = false; b.g.position.set(p.x, 0, p.z); b.g.visible = true; tot += Math.hypot(p.x - px, p.z - pz); px = p.x; pz = p.z; });
+  busd.got = 0; busd.ph = 'run'; busd.time = 30 + tot / 7;
+  toast('🚌 خط أتوبيس! وقف عند المحطات الزرقا بالترتيب');
+}
+function busdHide() { busd.bins.forEach(b => b.g.visible = false); }
+function busdStart() {
+  if (drive.active) driveStop(); if (walk.active) walkStop();
+  driveStart(); busd.on = true; busdColor(true);
+  drive.m.phase = 'idle'; drive.pick.g.visible = false; drive.dest.g.visible = false; drive.pax.visible = false;
+  drive.btn.classList.remove('on'); busd.btn.classList.add('on');
+  busdNew();
+}
+function busdStop() {
+  if (!busd.on) return;
+  busd.on = false; busdColor(false); busdHide(); busd.ph = 'idle'; busd.btn.classList.remove('on');
+}
+const _driveStopB = driveStop;
+driveStop = function () { busdStop(); _driveStopB(); };
+busd.btn.addEventListener('click', e => { e.stopPropagation(); if (busd.on) driveStop(); else busdStart(); });
+const _updateDriveB = updateDrive;
+updateDrive = function (dtReal) {
+  _updateDriveB(dtReal);
+  if (!busd.on || !drive.active) return;
+  const dt = Math.min(dtReal, 0.05);
+  let html = '<b>🚌 أتوبيس</b> · ' + Math.round(Math.abs(drive.v) * 4) + ' كم/س<br>';
+  if (busd.ph === 'idle') { busd.wait -= dt; html += 'استنى الخط الجاي...'; if (busd.wait <= 0) busdNew(); }
+  else {
+    busd.time -= dt;
+    let nxt = null, nd = 1e9;
+    const cur = busd.bins.find(b => !b.done); busd.bins.forEach(b => { if (b !== cur && !b.done) b.g.children[2].visible = false; }); if (cur) cur.g.children[2].visible = true;
+    if (cur) { const d = Math.hypot(cur.x - drive.x, cur.z - drive.z); nd = d; nxt = cur;
+      if (d < 6.5 && Math.abs(drive.v) < 2.5) busd.dwell = (busd.dwell || 0) + dt; else busd.dwell = 0;
+      if (busd.dwell >= 1.2) { busd.dwell = 0; cur.done = true; cur.g.visible = false; busd.got++; busd.stats.bins++; state.money += 70; busd.stats.earned += 70; document.getElementById('moneyTxt').textContent = Math.floor(state.money); toast('🧍 ' + busd.got + '/5 +70 💰'); } }
+    if (busd.got >= 5) {
+      const gain = 200 + Math.round(busd.time * 3); state.money += gain; busd.stats.earned += gain; busd.stats.routes++;
+      council.crimeP = council.crimeP || 0; state.happiness = Math.min(100, (state.happiness || 0) + 0);
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+      toast('🏆 خلّصت الخط! +' + gain + ' 💰 الركاب وصلوا', 3000); busd.ph = 'idle'; busd.wait = 3;
+    } else if (busd.time <= 0) {
+      state.money -= 100; busd.stats.failed++; document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+      toast('⏰ الوقت خلص: -100 💰', 3000); busdHide(); busd.ph = 'idle'; busd.wait = 3;
+    } else if (nxt) {
+      let rel = Math.atan2(nxt.x - drive.x, nxt.z - drive.z) - drive.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      html += '<span style="display:inline-block;font-size:24px;transform:rotate(' + Math.round(-rel * 180 / Math.PI) + 'deg)">⬆️</span> ' + Math.round(nd) + ' م · محطات <b>' + busd.got + '/5</b> · ⏱ <b>' + Math.max(0, Math.ceil(busd.time)) + '</b> ث<br>وقف جنب المحطة';
+    }
+  }
+  html += '<br>خطوط: <b>' + busd.stats.routes + '</b> · محطات: <b>' + busd.stats.bins + '</b> · كسب: <b>' + busd.stats.earned + '</b>';
+  drive.panel.innerHTML = html;
+};
+COUNCIL_QUESTS.push({ id: 'q19', t: 'خلّص خطين أتوبيس 🚌', r: 600, v: () => busd.stats.routes, g: 2 });
+window.__city = { busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
