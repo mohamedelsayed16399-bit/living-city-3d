@@ -12010,7 +12010,78 @@ updateDrive = function (dtReal) {
   drive.panel.innerHTML = html;
 };
 COUNCIL_QUESTS.push({ id: 'q17', t: 'انقل 3 مرضى للمستشفى بالإسعاف 🚑', r: 700, v: () => ambul.stats.saved, g: 3 });
-window.__city = { ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R142: GARBAGE TRUCK ROUTE - collect 5 bins in a chain before time runs out; clean city = happiness
+const garb = (() => {
+  const bins = [];
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.Group(); g.visible = false; scene.add(g);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 1.1, 8), new THREE.MeshLambertMaterial({ color: 0x2e7d32 })); b.position.y = 0.55;
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x1b5e20 })); l.position.y = 1.15;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 16, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x66ff66, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 8;
+    g.add(b, l, beam); bins.push({ g, x: 0, z: 0, done: false });
+  }
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'garbBtn'; btn.title = 'وضع الزبالة: لم 5 صناديق بسرعة'; btn.textContent = '🚛';
+  document.getElementById('sidebtns').appendChild(btn);
+  const css = document.createElement('style'); css.textContent = '#garbBtn.on{background:#2e7d32;color:#fff}'; document.head.appendChild(css);
+  return { bins, btn, on: false, ph: 'idle', time: 0, wait: 0, got: 0, stats: { routes: 0, bins: 0, earned: 0, failed: 0 } };
+})();
+function garbColor(on) {
+  const body = drive.car.children[0].material, cabin = drive.car.children[2].material;
+  if (!rescue.orig) rescue.orig = [body.color.getHex(), cabin.color.getHex()];
+  body.color.setHex(on ? 0x2e7d32 : rescue.orig[0]); cabin.color.setHex(on ? 0xc8e6c9 : rescue.orig[1]);
+}
+function garbNew() {
+  let px = drive.x, pz = drive.z, tot = 0;
+  garb.bins.forEach(b => { const p = driveRandomSpot(30, 90, px, pz); b.x = p.x; b.z = p.z; b.done = false; b.g.position.set(p.x, 0, p.z); b.g.visible = true; tot += Math.hypot(p.x - px, p.z - pz); px = p.x; pz = p.z; });
+  garb.got = 0; garb.ph = 'run'; garb.time = 30 + tot / 7;
+  toast('🚛 مسار زبالة! لم الـ5 صناديق الخضرا قبل ما الوقت يخلص');
+}
+function garbHide() { garb.bins.forEach(b => b.g.visible = false); }
+function garbStart() {
+  if (drive.active) driveStop(); if (walk.active) walkStop();
+  driveStart(); garb.on = true; garbColor(true);
+  drive.m.phase = 'idle'; drive.pick.g.visible = false; drive.dest.g.visible = false; drive.pax.visible = false;
+  drive.btn.classList.remove('on'); garb.btn.classList.add('on');
+  garbNew();
+}
+function garbStop() {
+  if (!garb.on) return;
+  garb.on = false; garbColor(false); garbHide(); garb.ph = 'idle'; garb.btn.classList.remove('on');
+}
+const _driveStopG = driveStop;
+driveStop = function () { garbStop(); _driveStopG(); };
+garb.btn.addEventListener('click', e => { e.stopPropagation(); if (garb.on) driveStop(); else garbStart(); });
+const _updateDriveG = updateDrive;
+updateDrive = function (dtReal) {
+  _updateDriveG(dtReal);
+  if (!garb.on || !drive.active) return;
+  const dt = Math.min(dtReal, 0.05);
+  let html = '<b>🚛 زبالة</b> · ' + Math.round(Math.abs(drive.v) * 4) + ' كم/س<br>';
+  if (garb.ph === 'idle') { garb.wait -= dt; html += 'استنى المسار الجاي...'; if (garb.wait <= 0) garbNew(); }
+  else {
+    garb.time -= dt;
+    let nxt = null, nd = 1e9;
+    garb.bins.forEach(b => { if (b.done) return; const d = Math.hypot(b.x - drive.x, b.z - drive.z); if (d < 6.5 && Math.abs(drive.v) < 14) { b.done = true; b.g.visible = false; garb.got++; garb.stats.bins++; state.money += 60; garb.stats.earned += 60; document.getElementById('moneyTxt').textContent = Math.floor(state.money); toast('♻️ ' + garb.got + '/5 +60 💰'); } else if (d < nd) { nd = d; nxt = b; } });
+    if (garb.got >= 5) {
+      const gain = 200 + Math.round(garb.time * 3); state.money += gain; garb.stats.earned += gain; garb.stats.routes++;
+      council.crimeP = council.crimeP || 0; state.happiness = Math.min(100, (state.happiness || 0) + 0);
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+      toast('🏆 خلّصت المسار! +' + gain + ' 💰 المدينة نضيفة', 3000); garb.ph = 'idle'; garb.wait = 3;
+    } else if (garb.time <= 0) {
+      state.money -= 100; garb.stats.failed++; document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+      toast('⏰ الوقت خلص: -100 💰', 3000); garbHide(); garb.ph = 'idle'; garb.wait = 3;
+    } else if (nxt) {
+      let rel = Math.atan2(nxt.x - drive.x, nxt.z - drive.z) - drive.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      html += '<span style="display:inline-block;font-size:24px;transform:rotate(' + Math.round(-rel * 180 / Math.PI) + 'deg)">⬆️</span> ' + Math.round(nd) + ' م · صناديق <b>' + garb.got + '/5</b> · ⏱ <b>' + Math.max(0, Math.ceil(garb.time)) + '</b> ث<br>اقرب من الصندوق وهدّي شوية';
+    }
+  }
+  html += '<br>مسارات: <b>' + garb.stats.routes + '</b> · صناديق: <b>' + garb.stats.bins + '</b> · كسب: <b>' + garb.stats.earned + '</b>';
+  drive.panel.innerHTML = html;
+};
+COUNCIL_QUESTS.push({ id: 'q18', t: 'خلّص مسارين زبالة 🚛', r: 600, v: () => garb.stats.routes, g: 2 });
+window.__city = { garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
