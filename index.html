@@ -12155,7 +12155,50 @@ updateDrive = function (dtReal) {
   drive.panel.innerHTML = html;
 };
 COUNCIL_QUESTS.push({ id: 'q19', t: 'خلّص خطين أتوبيس 🚌', r: 600, v: () => busd.stats.routes, g: 2 });
-window.__city = { busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R144: MAYOR RANK - XP from every service mission and council quest; ranks give a passive salary and a badge
+const RANKS = [
+  { x: 0, n: 'مواطن', b: 0 }, { x: 150, n: 'مستشار حي', b: 10 }, { x: 450, n: 'رئيس حي', b: 25 }, { x: 1000, n: 'نائب المحافظ', b: 45 },
+  { x: 2000, n: 'محافظ', b: 70 }, { x: 3600, n: 'عمدة المدينة', b: 100 }, { x: 6000, n: 'أسطورة الإسكندرية', b: 150 }];
+const mayor = (() => {
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'rankBtn'; btn.title = 'رتبتك كعمدة'; btn.textContent = '🏅';
+  document.getElementById('sidebtns').appendChild(btn);
+  const box = document.createElement('div');
+  box.id = 'rankBox'; box.style.cssText = 'position:fixed;left:64px;top:64px;z-index:30;display:none;background:rgba(15,20,35,.92);color:#fff;border:1px solid #556;border-radius:12px;padding:12px 14px;min-width:210px;font:13px/1.7 inherit;direction:rtl';
+  document.body.appendChild(box);
+  btn.addEventListener('click', e => { e.stopPropagation(); box.style.display = box.style.display === 'none' ? 'block' : 'none'; });
+  return { btn, box, xp: 0, rank: 0, paid: 0, t: 0, saved: 0 };
+})();
+function mayorXP() {
+  const sv = (o, k) => (o && o.stats && o.stats[k]) || 0;
+  let x = sv(drive, 'n') * 20 + sv(rescue, 'saved') * 40 + sv(police, 'caught') * 45 + sv(ambul, 'saved') * 45 + sv(garb, 'routes') * 60 + sv(busd, 'routes') * 60;
+  x += Object.keys(council.done || {}).length * 120 + Math.floor((state.money || 0) / 400);
+  return x;
+}
+function mayorRankOf(x) { let r = 0; for (let i = 0; i < RANKS.length; i++) if (x >= RANKS[i].x) r = i; return r; }
+function mayorRender() {
+  const x = mayor.xp, r = mayor.rank, nx = RANKS[r + 1];
+  const pct = nx ? Math.round((x - RANKS[r].x) / (nx.x - RANKS[r].x) * 100) : 100;
+  mayor.box.innerHTML = '<b>🏅 ' + RANKS[r].n + '</b><br>خبرة: <b>' + x + '</b>' + (nx ? ' / ' + nx.x + '<br>الجاية: ' + nx.n : '<br>أعلى رتبة!') + '<div style="height:8px;background:#334;border-radius:4px;margin:6px 0"><div style="height:8px;width:' + pct + '%;background:#ffb300;border-radius:4px"></div></div>راتب كل دقيقة: <b>' + RANKS[r].b * 4 + ' 💰</b><br>إجمالي الرواتب: <b>' + mayor.paid + '</b>';
+  mayor.btn.textContent = '🏅';
+}
+function mayorTick(dt) {
+  mayor.t += dt;
+  if (mayor.t < 1) return;
+  const el = mayor.t; mayor.t = 0;
+  const xp = Math.max(mayor.xp, mayorXP()); mayor.xp = xp;
+  const r = mayorRankOf(xp);
+  if (r > mayor.rank) { mayor.rank = r; toast('🏅 ترقية! بقيت: ' + RANKS[r].n + ' (راتب ' + RANKS[r].b * 4 + ' 💰/دقيقة)', 4500); }
+  mayor.sal = (mayor.sal || 0) + RANKS[mayor.rank].b * 4 * el / 60 * (state.speed > 0 ? 1 : 0);
+  if (mayor.sal >= 1) { const p = Math.floor(mayor.sal); mayor.sal -= p; state.money += p; mayor.paid += p; const mt = document.getElementById('moneyTxt'); if (mt) mt.textContent = Math.floor(state.money); }
+  if (mayor.box.style.display !== 'none') mayorRender();
+  try { localStorage.setItem('mayor_xp_v1', String(mayor.xp)); } catch (e) {}
+}
+try { mayor.xp = parseInt(localStorage.getItem('mayor_xp_v1') || '0', 10) || 0; mayor.rank = mayorRankOf(mayor.xp); } catch (e) {}
+let _mayorLast = performance.now();
+setInterval(() => { const n = performance.now(); mayorTick(Math.min(2, (n - _mayorLast) / 1000)); _mayorLast = n; }, 1000);
+window.__city = { mayor, mayorTick, RANKS, busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
