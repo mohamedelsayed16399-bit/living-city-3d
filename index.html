@@ -12198,7 +12198,82 @@ function mayorTick(dt) {
 try { mayor.xp = parseInt(localStorage.getItem('mayor_xp_v1') || '0', 10) || 0; mayor.rank = mayorRankOf(mayor.xp); } catch (e) {}
 let _mayorLast = performance.now();
 setInterval(() => { const n = performance.now(); mayorTick(Math.min(2, (n - _mayorLast) / 1000)); _mayorLast = n; }, 1000);
-window.__city = { mayor, mayorTick, RANKS, busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R145: GARBAGE TRUCK ROUTE - collect 5 bins in a chain before time runs out; clean city = happiness
+const rep = (() => {
+  const bins = [];
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.Group(); g.visible = false; scene.add(g);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 1.1, 8), new THREE.MeshLambertMaterial({ color: 0xff8f00 })); b.position.y = 0.55;
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0xe65100 })); l.position.y = 1.15;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 16, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffab40, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 8;
+    g.add(b, l, beam); bins.push({ g, x: 0, z: 0, done: false });
+  }
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'repBtn'; btn.title = 'وضع الزلزال: صلّح المواقع المتضررة'; btn.textContent = '🏗️';
+  document.getElementById('sidebtns').appendChild(btn);
+  const css = document.createElement('style'); css.textContent = '#repBtn.on{background:#2e7d32;color:#fff}'; document.head.appendChild(css);
+  return { bins, btn, on: false, ph: 'idle', time: 0, wait: 0, got: 0, stats: { routes: 0, bins: 0, earned: 0, failed: 0 } };
+})();
+function repColor(on) {
+  const body = drive.car.children[0].material, cabin = drive.car.children[2].material;
+  if (!rescue.orig) rescue.orig = [body.color.getHex(), cabin.color.getHex()];
+  body.color.setHex(on ? 0xff8f00 : rescue.orig[0]); cabin.color.setHex(on ? 0xffe0b2 : rescue.orig[1]);
+}
+function repNew() {
+  let px = drive.x, pz = drive.z, tot = 0;
+  rep.bins.forEach(b => { const p = driveRandomSpot(30, 90, px, pz); b.x = p.x; b.z = p.z; b.done = false; b.g.position.set(p.x, 0, p.z); b.g.visible = true; tot += Math.hypot(p.x - px, p.z - pz); px = p.x; pz = p.z; });
+  rep.got = 0; rep.ph = 'run'; window.__quakeShake = 1.6; rep.time = 30 + tot / 7;
+  toast('🏗️ 🌋 زلزال! 4 مواقع اتضررت (الأعمدة البرتقالي). روح وقف جنب كل واحد');
+}
+function repHide() { rep.bins.forEach(b => b.g.visible = false); }
+function repStart() {
+  if (drive.active) driveStop(); if (walk.active) walkStop();
+  driveStart(); rep.on = true; repColor(true);
+  drive.m.phase = 'idle'; drive.pick.g.visible = false; drive.dest.g.visible = false; drive.pax.visible = false;
+  drive.btn.classList.remove('on'); rep.btn.classList.add('on');
+  repNew();
+}
+function repStop() {
+  if (!rep.on) return;
+  rep.on = false; repColor(false); repHide(); rep.ph = 'idle'; rep.btn.classList.remove('on');
+}
+const _driveStopRP = driveStop;
+driveStop = function () { repStop(); _driveStopRP(); };
+rep.btn.addEventListener('click', e => { e.stopPropagation(); if (rep.on) driveStop(); else repStart(); });
+const _updateDriveRP = updateDrive;
+updateDrive = function (dtReal) {
+  _updateDriveRP(dtReal);
+  if (window.__quakeShake > 0) { const k = window.__quakeShake; window.__quakeShake = Math.max(0, k - Math.min(dtReal, 0.05)); camera.position.x += (Math.random() - 0.5) * 0.5 * k; camera.position.y += (Math.random() - 0.5) * 0.4 * k; }
+  if (!rep.on || !drive.active) return;
+  const dt = Math.min(dtReal, 0.05);
+  let html = '<b>🏗️ إصلاح</b> · ' + Math.round(Math.abs(drive.v) * 4) + ' كم/س<br>';
+  if (rep.ph === 'idle') { rep.wait -= dt; html += 'استنى الزلزال الجاي...'; if (rep.wait <= 0) repNew(); }
+  else {
+    rep.time -= dt;
+    let nxt = null, nd = 1e9;
+    const cur = rep.bins.find(b => !b.done); rep.bins.forEach(b => { if (b !== cur && !b.done) b.g.children[2].visible = false; }); if (cur) cur.g.children[2].visible = true;
+    if (cur) { const d = Math.hypot(cur.x - drive.x, cur.z - drive.z); nd = d; nxt = cur;
+      if (d < 6.5 && Math.abs(drive.v) < 2.5) rep.dwell = (rep.dwell || 0) + dt; else rep.dwell = 0;
+      if (rep.dwell >= 1.8) { rep.dwell = 0; cur.done = true; cur.g.visible = false; rep.got++; rep.stats.bins++; state.money += 90; rep.stats.earned += 90; document.getElementById('moneyTxt').textContent = Math.floor(state.money); toast('🔧 ' + rep.got + '/4 +90 💰'); } }
+    if (rep.got >= 4) {
+      const gain = 200 + Math.round(rep.time * 3); state.money += gain; rep.stats.earned += gain; rep.stats.routes++;
+      council.crimeP = council.crimeP || 0; state.happiness = Math.min(100, (state.happiness || 0) + 0);
+      document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+      toast('🏆 المدينة اتصلحت! +' + gain + ' 💰 الخسائر اتقللت', 3000); rep.ph = 'idle'; rep.wait = 3;
+    } else if (rep.time <= 0) {
+      state.money -= 100; rep.stats.failed++; document.getElementById('moneyTxt').textContent = Math.floor(state.money); recalcStats();
+      toast('⏰ الوقت خلص: -100 💰', 3000); repHide(); rep.ph = 'idle'; rep.wait = 3;
+    } else if (nxt) {
+      let rel = Math.atan2(nxt.x - drive.x, nxt.z - drive.z) - drive.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      html += '<span style="display:inline-block;font-size:24px;transform:rotate(' + Math.round(-rel * 180 / Math.PI) + 'deg)">⬆️</span> ' + Math.round(nd) + ' م · مواقع <b>' + rep.got + '/4</b> · ⏱ <b>' + Math.max(0, Math.ceil(rep.time)) + '</b> ث<br>وقف جنب الموقع';
+    }
+  }
+  html += '<br>زلازل: <b>' + rep.stats.routes + '</b> · مواقع: <b>' + rep.stats.bins + '</b> · كسب: <b>' + rep.stats.earned + '</b>';
+  drive.panel.innerHTML = html;
+};
+COUNCIL_QUESTS.push({ id: 'q20', t: 'صلّح 8 مواقع بعد الزلازل 🏗️', r: 700, v: () => rep.stats.bins, g: 8 });
+window.__city = { rep, repStart, mayor, mayorTick, RANKS, busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
