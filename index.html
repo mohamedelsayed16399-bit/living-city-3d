@@ -12173,7 +12173,7 @@ const mayor = (() => {
 function mayorXP() {
   const sv = (o, k) => (o && o.stats && o.stats[k]) || 0;
   let x = sv(drive, 'n') * 20 + sv(rescue, 'saved') * 40 + sv(police, 'caught') * 45 + sv(ambul, 'saved') * 45 + sv(garb, 'routes') * 60 + sv(busd, 'routes') * 60;
-  x += Object.keys(council.done || {}).length * 120 + Math.floor((state.money || 0) / 400);
+  x += (typeof bcamp !== 'undefined' ? bcamp.stage * 100 : 0) + (rep.stats.bins || 0) * 25 + Object.keys(council.done || {}).length * 120 + Math.floor((state.money || 0) / 400);
   return x;
 }
 function mayorRankOf(x) { let r = 0; for (let i = 0; i < RANKS.length; i++) if (x >= RANKS[i].x) r = i; return r; }
@@ -12273,7 +12273,57 @@ updateDrive = function (dtReal) {
   drive.panel.innerHTML = html;
 };
 COUNCIL_QUESTS.push({ id: 'q20', t: 'صلّح 8 مواقع بعد الزلازل 🏗️', r: 700, v: () => rep.stats.bins, g: 8 });
-window.__city = { rep, repStart, mayor, mayorTick, RANKS, busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
+
+// R146: BUILDING CAMPAIGN - 10 chained goals for your own plots (houses, schools, hospital, jobs, parks, happiness...), each pays cash + XP
+const bcampRaw = (t) => { let n = 0; for (const r of state.plots.values()) if (r.type === t) n++; return n; };
+const bcampBase = (() => { let b = null; try { b = JSON.parse(localStorage.getItem('camp_base_v1') || 'null'); } catch (e) {} return b; })();
+function bcampBaseGet() { if (window.__bcampBase) return window.__bcampBase; let b = bcampBase; if (!b) { b = { house: bcampRaw('house'), shop: bcampRaw('shop'), school: bcampRaw('school'), hospital: bcampRaw('hospital'), mosque: bcampRaw('mosque'), office: bcampRaw('office'), parks: state.parks || 0, pop: state.population || 0, jobs: state.jobs || 0 }; try { localStorage.setItem('camp_base_v1', JSON.stringify(b)); } catch (e) {} } window.__bcampBase = b; return b; }
+const bcampCount = (t) => Math.max(0, bcampRaw(t) - (bcampBaseGet()[t] || 0));
+const BCAMP = [
+  { t: 'ابنِ 3 بيوت', r: 400, v: () => bcampCount('house'), g: 3 },
+  { t: 'ابنِ محل تجاري', r: 400, v: () => bcampCount('shop'), g: 1 },
+  { t: 'ابنِ مدرسة', r: 600, v: () => bcampCount('school'), g: 1 },
+  { t: 'زوّد السكان 40', r: 700, v: () => Math.max(0, (state.population || 0) - bcampBaseGet().pop), g: 40 },
+  { t: 'ابنِ مستشفى', r: 900, v: () => bcampCount('hospital'), g: 1 },
+  { t: 'ابنِ جنينة (حديقة)', r: 500, v: () => Math.max(0, (state.parks || 0) - bcampBaseGet().parks), g: 1 },
+  { t: 'ابنِ مسجد', r: 800, v: () => bcampCount('mosque'), g: 1 },
+  { t: 'ابنِ برج مكاتب', r: 1200, v: () => bcampCount('office'), g: 1 },
+  { t: 'زوّد الوظايف 60', r: 1500, v: () => Math.max(0, (state.jobs || 0) - bcampBaseGet().jobs), g: 60 },
+  { t: 'سعادة المدينة 80% أو أكتر', r: 3000, v: () => state.happiness || 0, g: 80 }];
+const bcamp = (() => {
+  const btn = document.createElement('button');
+  btn.className = 'sbtn'; btn.id = 'bcampBtn'; btn.title = 'حملة البناء'; btn.textContent = '📜';
+  document.getElementById('sidebtns').appendChild(btn);
+  const box = document.createElement('div');
+  box.id = 'bcampBox'; box.style.cssText = 'position:fixed;left:64px;top:110px;z-index:30;display:none;background:rgba(15,20,35,.92);color:#fff;border:1px solid #556;border-radius:12px;padding:12px 14px;min-width:240px;font:13px/1.7 inherit;direction:rtl';
+  document.body.appendChild(box);
+  btn.addEventListener('click', e => { e.stopPropagation(); box.style.display = box.style.display === 'none' ? 'block' : 'none'; bcampRender(); });
+  let stage = 0; try { stage = Math.min(BCAMP.length, parseInt(localStorage.getItem('camp_stage_v1') || '0', 10) || 0); } catch (e) {}
+  return { btn, box, stage, t: 0 };
+})();
+function bcampRender() {
+  const c = bcamp, tot = BCAMP.length;
+  if (c.stage >= tot) { c.box.innerHTML = '<b>📜 حملة البناء</b><br>🏆 خلّصت الحملة كلها! (' + tot + '/' + tot + ')'; return; }
+  const q = BCAMP[c.stage], cur = Math.min(q.g, Math.floor(q.v())), pct = Math.round(cur / q.g * 100);
+  let list = '';
+  for (let i = 0; i < tot; i++) list += '<div style="opacity:' + (i < c.stage ? 0.5 : i === c.stage ? 1 : 0.35) + '">' + (i < c.stage ? '✅' : i === c.stage ? '▶️' : '🔒') + ' ' + BCAMP[i].t + '</div>';
+  c.box.innerHTML = '<b>📜 حملة البناء ' + c.stage + '/' + tot + '</b><br><b>' + q.t + '</b> (' + cur + '/' + q.g + ') · جايزة ' + q.r + ' 💰<div style="height:8px;background:#334;border-radius:4px;margin:6px 0"><div style="height:8px;width:' + pct + '%;background:#4caf50;border-radius:4px"></div></div>' + list;
+}
+function bcampTick(dt) {
+  bcamp.t += dt; bcampBaseGet(); if (bcamp.t < 1) return; bcamp.t = 0;
+  let moved = false;
+  while (bcamp.stage < BCAMP.length && BCAMP[bcamp.stage].v() >= BCAMP[bcamp.stage].g) {
+    const q = BCAMP[bcamp.stage]; state.money += q.r; bcamp.stage++; moved = true;
+    document.getElementById('moneyTxt').textContent = Math.floor(state.money);
+    toast('📜 اتحقق: ' + q.t + ' +' + q.r + ' 💰' + (bcamp.stage >= BCAMP.length ? ' 🏆 خلّصت الحملة!' : ' · الجاي: ' + BCAMP[bcamp.stage].t), 4500);
+    if (bcamp.stage < BCAMP.length && BCAMP[bcamp.stage].v() >= BCAMP[bcamp.stage].g) continue;
+  }
+  if (moved) { try { localStorage.setItem('camp_stage_v1', String(bcamp.stage)); } catch (e) {} }
+  if (bcamp.box.style.display !== 'none') bcampRender();
+}
+let _bcampLast = performance.now();
+setInterval(() => { const n = performance.now(); bcampTick(Math.min(2, (n - _bcampLast) / 1000) + 0); _bcampLast = n; }, 1000);
+window.__city = { bcamp, bcampTick, BCAMP, rep, repStart, mayor, mayorTick, RANKS, busd, busdStart, garb, garbStart, ambul, ambulStart, police, policeStart, councilPower, powerDemand, powerCapacity, powerApply, rescue, rescueStart, econCycle, ECON, econBuyStimulus, walk, decisionShow, decisionResolve, DECISIONS, council, state, citizens, cars, minibuses, toktoks, CFG, camera, controls, scene, fountains, feluccaState, fps: 0, placeBuilding, trySitInPark, plotPosOf: plotPos, startFire,
   setCam(px, py, pz, tx, ty, tz) { camera.position.set(px, py, pz); controls.target.set(tx, ty, tz); controls.update(); },
   freePlotScreenPos() {
     const out = [];
